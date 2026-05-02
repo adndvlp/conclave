@@ -44,3 +44,25 @@ jobs:
           path: landing/dist
       - id: deploy
         uses: actions/deploy-pages@v4
+
+  release:
+    if: github.ref == 'refs/heads/main'
+    needs: [typecheck, deploy-landing]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create Release
+        run: |
+          VERSION=$(date +%Y.%m.%d)-$(git rev-parse --short HEAD)
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --notes "Conclave release $VERSION. Fork of OpenCode with multi-LLM team debates." \
+            --target main \
+            --latest
+        env:
+          GH_TOKEN: ${{ github.token }}
