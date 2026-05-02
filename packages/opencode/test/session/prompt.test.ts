@@ -44,6 +44,7 @@ import { Format } from "../../src/format"
 import { provideTmpdirInstance, provideTmpdirServer } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { reply, TestLLMServer } from "../lib/llm-server"
+import { Team } from "@/team"
 
 void Log.init({ print: false })
 
@@ -163,6 +164,7 @@ function makeHttp() {
     Permission.defaultLayer,
     Plugin.defaultLayer,
     Config.defaultLayer,
+    Team.defaultLayer,
     ProviderSvc.defaultLayer,
     lsp,
     mcp,

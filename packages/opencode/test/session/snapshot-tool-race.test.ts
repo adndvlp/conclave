@@ -55,6 +55,7 @@ import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { Ripgrep } from "../../src/file/ripgrep"
 import { Format } from "../../src/format"
+import { Team } from "@/team"
 
 void Log.init({ print: false })
 
@@ -116,6 +117,7 @@ function makeHttp() {
     Permission.defaultLayer,
     Plugin.defaultLayer,
     Config.defaultLayer,
+    Team.defaultLayer,
     ProviderSvc.defaultLayer,
     lsp,
     mcp,

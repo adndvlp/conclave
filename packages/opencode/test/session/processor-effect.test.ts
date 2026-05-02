@@ -23,6 +23,7 @@ import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { provideTmpdirServer } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { raw, reply, TestLLMServer } from "../lib/llm-server"
+import { Team } from "@/team"
 
 void Log.init({ print: false })
 
@@ -162,6 +163,7 @@ const deps = Layer.mergeAll(
   Permission.defaultLayer,
   Plugin.defaultLayer,
   Config.defaultLayer,
+  Team.defaultLayer,
   LLM.defaultLayer,
   Provider.defaultLayer,
   status,
