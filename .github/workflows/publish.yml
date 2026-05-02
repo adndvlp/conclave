@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -15,9 +15,29 @@ jobs:
       - uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
-      - name: Install
-        run: bun install --frozen-lockfile
-        working-directory: packages/opencode
-      - name: Typecheck
-        run: bun run typecheck
-        working-directory: packages/opencode
+      - run: bun install --frozen-lockfile
+      - run: bun run --cwd packages/opencode typecheck
+
+  deploy-landing:
+    if: github.ref == 'refs/heads/main'
+    needs: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+      - run: cd landing && bun install && bun run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: landing/dist
+      - id: deploy
+        uses: actions/deploy-pages@v4
