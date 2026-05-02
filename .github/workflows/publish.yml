@@ -4,6 +4,7 @@ run-name: "${{ format('release {0}', inputs.bump) }}"
 on:
   push:
     branches:
+      - main
       - ci
       - dev
       - beta
