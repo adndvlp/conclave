@@ -3,8 +3,12 @@ name: ci
 on:
   push:
     branches: [main]
+    paths:
+      - 'packages/opencode/**'
+      - 'packages/core/**'
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   typecheck:
@@ -20,7 +24,6 @@ jobs:
 
   deploy-landing:
     if: github.ref == 'refs/heads/main'
-    needs: typecheck
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -38,16 +41,25 @@ jobs:
       - uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
-      - run: cd landing && bun install && bun run build
-      - uses: actions/upload-pages-artifact@v3
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            landing:
+              - 'landing/**'
+      - if: steps.changes.outputs.landing == 'true'
+        run: cd landing && bun install && bun run build
+      - if: steps.changes.outputs.landing == 'true'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: landing/dist
-      - id: deploy
+      - if: steps.changes.outputs.landing == 'true'
+        id: deploy
         uses: actions/deploy-pages@v4
 
   release:
-    if: github.ref == 'refs/heads/main'
-    needs: [typecheck, deploy-landing]
+    if: github.event_name == 'workflow_dispatch'
+    needs: typecheck
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -58,10 +70,9 @@ jobs:
           fetch-depth: 0
       - name: Create Release
         run: |
-          VERSION=$(date +%Y.%m.%d)-$(git rev-parse --short HEAD)
-          gh release create "v$VERSION" \
-            --title "v$VERSION" \
-            --notes "Conclave release $VERSION. Fork of OpenCode with multi-LLM team debates." \
+          gh release create "v$(date +%Y.%m.%d)" \
+            --title "v$(date +%Y.%m.%d)" \
+            --generate-notes \
             --target main \
             --latest
         env:
