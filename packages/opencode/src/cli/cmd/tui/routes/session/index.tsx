@@ -254,22 +254,38 @@ export function Session() {
   const renderer = useRenderer()
 
   const [debateStatus, setDebateStatus] = createSignal<{
+    type: "debate" | "breaking"
     round: number
-    total: number
-    signals: { model: string; signal: string }[]
+    total?: number
+    signals?: { model: string; signal: string }[]
+    streams?: { modelName: string; text: string; round: number }[]
   } | null>(null)
 
   event.on("session.status", (evt) => {
     if (evt.properties.sessionID !== route.sessionID) return
     if (evt.properties.status.type === "team.debate") {
       setDebateStatus({
+        type: "debate",
         round: evt.properties.status.round,
         total: evt.properties.status.total,
         signals: evt.properties.status.signals,
       })
       return
     }
-    if (evt.properties.status.type !== "retry") return
+    if (evt.properties.status.type === "team.breaking") {
+      setDebateStatus({
+        type: "breaking",
+        round: evt.properties.status.globalRound,
+        streams: evt.properties.status.participantStreams,
+      })
+      return
+    }
+    if (evt.properties.status.type !== "retry") {
+      if (evt.properties.status.type === "idle" || evt.properties.status.type === "busy") {
+        setDebateStatus(null)
+      }
+      return
+    }
     if (evt.properties.status.message !== SessionRetry.GO_UPSELL_MESSAGE) return
     if (dialog.stack.length > 0) return
 
@@ -1089,17 +1105,36 @@ export function Session() {
                <box height={1} />
                <Show when={debateStatus()}>
                  {(s) => (
-                   <box paddingLeft={3} paddingBottom={1}>
+                   <box paddingLeft={3} paddingBottom={1} flexDirection="column">
                      <text fg={theme.textMuted}>
-                       Team debating · Round {s().round}/{s().total}
+                       {s().type === "breaking"
+                         ? `Team debating · Round ${s().round + 1}`
+                         : `Team debating · Round ${s().round}/${s().total}`
+                       }
                      </text>
-                     <Show when={s().signals.length > 0}>
-                       <box paddingLeft={2} paddingTop={0}>
-                         <For each={s().signals}>
+                     <Show when={s().type === "debate" && (s().signals?.length ?? 0) > 0}>
+                       <box paddingLeft={2} paddingTop={0} flexDirection="column">
+                         <For each={s().signals ?? []}>
                            {(sig) => (
                              <text fg={theme.textMuted}>
                                {sig.model}: {sig.signal}
                              </text>
+                           )}
+                         </For>
+                       </box>
+                     </Show>
+                     <Show when={s().type === "breaking" && (s().streams?.length ?? 0) > 0}>
+                       <box paddingLeft={2} paddingTop={0} flexDirection="column">
+                         <For each={s().streams ?? []}>
+                           {(stream) => (
+                             <box flexDirection="column">
+                               <text fg={theme.textMuted}>
+                                 ▶ {stream.modelName}
+                               </text>
+                               <box paddingLeft={2} paddingBottom={1}>
+                                 <text fg={theme.textMuted}>{stream.text.trim().split("\n").slice(-5).join("\n")}</text>
+                               </box>
+                             </box>
                            )}
                          </For>
                        </box>
@@ -1386,7 +1421,15 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
   const { theme } = useTheme()
   const sync = useSync()
   const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
-  const model = createMemo(() => Model.name(ctx.providers(), props.message.providerID, props.message.modelID))
+  const model = createMemo(() => {
+    const parentMsg = messages().find((m) => m.id === props.message.parentID)
+    if (parentMsg && parentMsg.role === "user" && "team" in parentMsg && parentMsg.team) {
+      if (typeof props.message.time.completed !== "number") {
+        return `Team (${(parentMsg as any).team.length} models)`
+      }
+    }
+    return Model.name(ctx.providers(), props.message.providerID, props.message.modelID)
+  })
 
   const final = createMemo(() => {
     return props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)
