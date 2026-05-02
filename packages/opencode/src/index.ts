@@ -68,7 +68,7 @@ function show(out: string) {
 
 const cli = yargs(args)
   .parserConfiguration({ "populate--": true })
-  .scriptName("opencode")
+  .scriptName("conclave")
   .wrap(100)
   .help("help", "show help")
   .alias("help", "h")
@@ -89,7 +89,7 @@ const cli = yargs(args)
   })
   .middleware(async (opts) => {
     if (opts.pure) {
-      process.env.OPENCODE_PURE = "1"
+      process.env.CONCLAVE_PURE = "1"
     }
 
     await Log.init({
@@ -105,8 +105,8 @@ const cli = yargs(args)
     Heap.start()
 
     process.env.AGENT = "1"
-    process.env.OPENCODE = "1"
-    process.env.OPENCODE_PID = String(process.pid)
+    process.env.CONCLAVE = "1"
+    process.env.CONCLAVE_PID = String(process.pid)
 
     Log.Default.info("opencode", {
       version: InstallationVersion,
@@ -115,7 +115,7 @@ const cli = yargs(args)
       run_id: processMetadata.runID,
     })
 
-    const marker = path.join(Global.Path.data, "opencode.db")
+    const marker = path.join(Global.Path.data, "conclave.db")
     if (!(await Filesystem.exists(marker))) {
       const tty = process.stderr.isTTY
       process.stderr.write("Performing one time database migration, may take a few minutes..." + EOL)

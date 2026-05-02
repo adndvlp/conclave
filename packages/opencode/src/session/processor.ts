@@ -1,4 +1,4 @@
-import { Cause, Deferred, Effect, Layer, Context, Scope } from "effect"
+import { Cause, Deferred, Effect, Layer, Context, Scope, Option } from "effect"
 import * as Stream from "effect/Stream"
 import { Agent } from "@/agent/agent"
 import { Bus } from "@/bus"
@@ -20,6 +20,7 @@ import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
 import * as Log from "@opencode-ai/core/util/log"
 import { isRecord } from "@/util/record"
+import { Team } from "@/team"
 
 const DOOM_LOOP_THRESHOLD = 3
 const log = Log.create({ service: "session.processor" })
@@ -90,6 +91,7 @@ export const layer: Layer.Layer<
   | Plugin.Service
   | SessionSummary.Service
   | SessionStatus.Service
+  | Team.Service
 > = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -104,6 +106,7 @@ export const layer: Layer.Layer<
     const summary = yield* SessionSummary.Service
     const scope = yield* Scope.Scope
     const status = yield* SessionStatus.Service
+    const team = yield* Team.Service
 
     const create = Effect.fn("SessionProcessor.create")(function* (input: Input) {
       // Pre-capture snapshot before the LLM stream starts. The AI SDK
@@ -541,11 +544,42 @@ export const layer: Layer.Layer<
         ctx.needsCompaction = false
         ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
 
+        // Run team debate — if team is enabled, find implementer and swap model
+        slog.info("process")
+        const onRoundComplete = (round: number, roundText: string) =>
+          Effect.gen(function* () {
+            const now = Date.now()
+            yield* session.updatePart({
+              id: PartID.ascending(),
+              messageID: ctx.assistantMessage.id,
+              sessionID: ctx.assistantMessage.sessionID,
+              type: "reasoning" as const,
+              text: `### Ronda ${round}\n\n${roundText}`,
+              time: { start: now, end: now },
+            })
+          })
+
+        const teamModel = yield* team.run(streamInput, ctx.sessionID, onRoundComplete).pipe(
+          Effect.orElseSucceed(() => Option.none()),
+        )
+        let finalInput: LLM.StreamInput
+        if (Option.isSome(teamModel)) {
+          const { model } = teamModel.value
+          slog.info("team.implementer", { modelID: model.id, providerID: model.providerID })
+          ctx.assistantMessage.modelID = model.id
+          ctx.assistantMessage.providerID = model.providerID
+          ctx.model = model
+          yield* session.updateMessage(ctx.assistantMessage)
+          finalInput = { ...streamInput, model }
+        } else {
+          finalInput = streamInput
+        }
+
         return yield* Effect.gen(function* () {
           yield* Effect.gen(function* () {
             ctx.currentText = undefined
             ctx.reasoningMap = {}
-            const stream = llm.stream(streamInput)
+            const stream = llm.stream(finalInput)
 
             yield* stream.pipe(
               Stream.tap((event) => handleEvent(event)),
@@ -613,6 +647,7 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(SessionStatus.defaultLayer),
     Layer.provide(Bus.layer),
     Layer.provide(Config.defaultLayer),
+    Layer.provide(Team.defaultLayer),
   ),
 )
 

@@ -208,20 +208,20 @@ for (const item of targets) {
       autoloadTsconfig: true,
       autoloadPackageJson: true,
       target: name.replace(pkg.name, "bun") as any,
-      outfile: `dist/${name}/bin/opencode`,
-      execArgv: [`--user-agent=opencode/${Script.version}`, "--use-system-ca", "--"],
+      outfile: `dist/${name}/bin/conclave`,
+      execArgv: [`--user-agent=conclave/${Script.version}`, "--use-system-ca", "--"],
       windows: {},
     },
     files: embeddedFileMap ? { "opencode-web-ui.gen.ts": embeddedFileMap } : {},
     entrypoints: ["./src/index.ts", parserWorker, workerPath, ...(embeddedFileMap ? ["opencode-web-ui.gen.ts"] : [])],
-    define: {
-      OPENCODE_VERSION: `'${Script.version}'`,
-      OPENCODE_MIGRATIONS: JSON.stringify(migrations),
-      OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
-      OPENCODE_WORKER_PATH: workerPath,
-      OPENCODE_CHANNEL: `'${Script.channel}'`,
-      OPENCODE_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
-    },
+      define: {
+        CONCLAVE_VERSION: `'${Script.version}'`,
+        CONCLAVE_MIGRATIONS: JSON.stringify(migrations),
+        OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
+        CONCLAVE_WORKER_PATH: workerPath,
+        CONCLAVE_CHANNEL: `'${Script.channel}'`,
+        CONCLAVE_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
+      },
   })
 
   // Smoke test: only run if binary is for current platform

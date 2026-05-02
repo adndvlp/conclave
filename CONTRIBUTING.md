@@ -1,6 +1,8 @@
-# Contributing to OpenCode
+# Contributing to Conclave
 
-We want to make it easy for you to contribute to OpenCode. Here are the most common type of changes that get merged:
+> Conclave is a fork of [OpenCode](https://github.com/anomalyco/opencode) focused on multi-LLM team collaboration.
+
+We want to make it easy for you to contribute. Here are the most common type of changes that get merged:
 
 - Bug fixes
 - Additional LSPs / Formatters

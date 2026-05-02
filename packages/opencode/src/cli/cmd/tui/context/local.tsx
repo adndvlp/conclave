@@ -250,6 +250,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           const a = agent.current()
           if (!a) return
           setModelStore("model", a.name, { ...val })
+          // Switching to individual model deactivates team (preserves members)
+          team.disable()
         },
         cycleFavorite(direction: 1 | -1) {
           const favorites = modelStore.favorite.filter((item) => isModelValid(item))
@@ -278,6 +280,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           const a = agent.current()
           if (!a) return
           setModelStore("model", a.name, { ...next })
+          // Switching to individual model clears team
+          if (teamStore.teams.length > 0) {
+            team.clear()
+          }
           const uniq = uniqueBy([next, ...modelStore.recent], (x) => `${x.providerID}/${x.modelID}`)
           if (uniq.length > 10) uniq.pop()
           setModelStore(
@@ -416,10 +422,115 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
     })
 
+    const teamFile = path.join(Global.Path.state, "team.json")
+
+    const [teamStore, setTeamStore] = createStore({
+      teams: [] as { name: string; members: { providerID: string; modelID: string }[] }[],
+      active: 0,
+      enabled: false,
+      ready: false,
+      nextId: 1,
+    })
+
+    function saveTeam() {
+      if (!teamStore.ready) return
+      void Filesystem.writeJson(teamFile, {
+        teams: teamStore.teams,
+        active: teamStore.active,
+        enabled: teamStore.enabled,
+        nextId: teamStore.nextId,
+      })
+    }
+
+    // Load saved teams on startup
+    Filesystem.readJson(teamFile)
+      .then((x: any) => {
+        if (Array.isArray(x.teams)) setTeamStore("teams", x.teams)
+        if (typeof x.active === "number") setTeamStore("active", x.active)
+        if (typeof x.enabled === "boolean") setTeamStore("enabled", x.enabled)
+        if (typeof x.nextId === "number") setTeamStore("nextId", x.nextId)
+      })
+      .catch(() => {})
+      .finally(() => setTeamStore("ready", true))
+
+    const team = {
+      get name() {
+        const t = teamStore.teams[teamStore.active]
+        return t?.name ?? "No team"
+      },
+      get isEnabled() {
+        return teamStore.enabled
+      },
+      enable() {
+        setTeamStore("enabled", true)
+        saveTeam()
+      },
+      disable() {
+        setTeamStore("enabled", false)
+        saveTeam()
+      },
+      list() {
+        return teamStore.teams
+      },
+      get activeIndex() {
+        return teamStore.active
+      },
+      switchTo(index: number) {
+        setTeamStore("active", index)
+        setTeamStore("enabled", true)
+        saveTeam()
+      },
+      current() {
+        if (!teamStore.enabled) return undefined
+        const t = teamStore.teams[teamStore.active]
+        return t && t.members.length >= 2 ? t.members : undefined
+      },
+      create(name: string) {
+        const id = teamStore.nextId
+        setTeamStore("teams", (prev) => [...prev, { name: name || `Team ${id}`, members: [] }])
+        setTeamStore("active", teamStore.teams.length)
+        setTeamStore("nextId", id + 1)
+        saveTeam()
+      },
+      delete(index: number) {
+        setTeamStore("teams", (prev) => prev.filter((_, i) => i !== index))
+        if (teamStore.active >= teamStore.teams.length - 1) {
+          setTeamStore("active", Math.max(0, teamStore.teams.length - 2))
+        }
+        saveTeam()
+      },
+      setName(name: string) {
+        setTeamStore("teams", teamStore.active, "name", name)
+        saveTeam()
+      },
+      set(members: { providerID: string; modelID: string }[]) {
+        setTeamStore("teams", teamStore.active, "members", members)
+        saveTeam()
+      },
+      toggle(providerID: string, modelID: string) {
+        setTeamStore("teams", teamStore.active, "members", (prev) => {
+          const exists = prev.findIndex((m) => m.providerID === providerID && m.modelID === modelID)
+          if (exists >= 0) return prev.filter((_, i) => i !== exists)
+          return [...prev, { providerID, modelID }]
+        })
+        setTeamStore("enabled", true)
+        saveTeam()
+      },
+      isSelected(providerID: string, modelID: string) {
+        const t = teamStore.teams[teamStore.active]
+        return t?.members.some((m) => m.providerID === providerID && m.modelID === modelID) ?? false
+      },
+      clear() {
+        setTeamStore("teams", teamStore.active, "members", [])
+        saveTeam()
+      },
+    }
+
     const result = {
       model,
       agent,
       mcp,
+      team,
     }
     return result
   },

@@ -1059,6 +1059,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     readClipboardImage: platform.readClipboardImage,
   })
 
+  const chooseTeam = () => {
+    void import("@/components/dialog-select-team").then((x) => {
+      dialog.show(() => <x.DialogSelectTeam />)
+    })
+  }
+
   const variants = createMemo(() => ["default", ...local.model.variant.list()])
   const accepting = createMemo(() => {
     const id = params.id
@@ -1500,6 +1506,34 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Show>
                 <Show when={!providersLoading()}>
                   <Show when={store.mode !== "shell"}>
+                    <Show when={local.team.current() && local.team.current()!.length >= 2}>
+                      <div
+                        data-component="prompt-team-control"
+                        style={providersShouldFadeIn() ? { animation: "fade-in 0.3s" } : undefined}
+                      >
+                        <Tooltip
+                          placement="top"
+                          gutter={4}
+                          value={language.t("command.team.choose")}
+                        >
+                          <Button
+                            data-action="prompt-team"
+                            as="div"
+                            variant="ghost"
+                            size="normal"
+                            class="min-w-0 max-w-[320px] text-13-regular text-text-base group"
+                            style={control()}
+                            onClick={chooseTeam}
+                          >
+                            <Icon name="brain" class="size-4 shrink-0 opacity-70 group-hover:opacity-100 transition-opacity duration-150" />
+                            <span class="truncate">
+                              {language.t("prompt.team.active", { count: local.team.current()!.length })}
+                            </span>
+                            <Icon name="chevron-down" size="small" class="shrink-0" />
+                          </Button>
+                        </Tooltip>
+                      </div>
+                    </Show>
                     <div
                       data-component="prompt-model-control"
                       style={providersShouldFadeIn() ? { animation: "fade-in 0.3s" } : undefined}

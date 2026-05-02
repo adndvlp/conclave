@@ -375,6 +375,15 @@ export type SessionStatus =
   | {
       type: "busy"
     }
+  | {
+      type: "team.debate"
+      round: number
+      total: number
+      signals: Array<{
+        model: string
+        signal: string
+      }>
+    }
 
 export type EventSessionStatus = {
   type: "session.status"
@@ -577,6 +586,10 @@ export type UserMessage = {
   tools?: {
     [key: string]: boolean
   }
+  team?: Array<{
+    providerID: string
+    modelID: string
+  }>
 }
 
 export type AssistantMessage = {
@@ -1672,6 +1685,32 @@ export type Config = {
      * Token buffer for compaction. Leaves enough window to avoid overflow during compaction.
      */
     reserved?: number
+  }
+  /**
+   * Conclave team configuration — multi-LLM collaborative debate
+   */
+  team?: {
+    /**
+     * Enable multi-LLM team debate before responding
+     */
+    enabled?: boolean
+    /**
+     * Team members — each is a providerID + modelID pair
+     */
+    members?: Array<{
+      /**
+       * Provider ID, e.g. anthropic, openai, google
+       */
+      providerID: string
+      /**
+       * Model ID, e.g. claude-opus-4-7, gpt-4o
+       */
+      modelID: string
+    }>
+    /**
+     * Maximum debate rounds before forcing a winner (default: 3)
+     */
+    maxRounds?: number
   }
   experimental?: {
     disable_paste_summary?: boolean
@@ -3847,6 +3886,10 @@ export type SessionPromptData = {
     format?: OutputFormat
     system?: string
     variant?: string
+    team?: Array<{
+      providerID: string
+      modelID: string
+    }>
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
   }
   path: {
@@ -4047,6 +4090,10 @@ export type SessionPromptAsyncData = {
     format?: OutputFormat
     system?: string
     variant?: string
+    team?: Array<{
+      providerID: string
+      modelID: string
+    }>
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
   }
   path: {

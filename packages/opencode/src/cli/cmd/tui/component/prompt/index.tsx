@@ -868,6 +868,7 @@ export function Prompt(props: PromptProps) {
           agent: agent.name,
           model: selectedModel,
           variant,
+          team: local.team.current(),
           parts: [
             ...editorParts,
             {
@@ -1281,7 +1282,7 @@ export function Prompt(props: PromptProps) {
               cursorColor={theme.text}
               syntaxStyle={syntax()}
             />
-            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">
+              <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">
               <box flexDirection="row" gap={1}>
                 <Show when={local.agent.current()} fallback={<box height={1} />}>
                   {(agent) => (
@@ -1292,13 +1293,39 @@ export function Prompt(props: PromptProps) {
                       <Show when={store.mode === "normal"}>
                         <box flexDirection="row" gap={1}>
                           <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>·</text>
-                          <text
-                            flexShrink={0}
-                            fg={fadeColor(keybind.leader ? theme.textMuted : theme.text, modelMetaAlpha())}
+                          <Show
+                            when={status().type === "team.debate"}
+                            fallback={
+                              <Show
+                                when={local.team.current()}
+                                fallback={
+                                  <>
+                                    <text
+                                      flexShrink={0}
+                                      fg={fadeColor(keybind.leader ? theme.textMuted : theme.text, modelMetaAlpha())}
+                                    >
+                                      {local.model.parsed().model}
+                                    </text>
+                                    <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>{currentProviderLabel()}</text>
+                                  </>
+                                }
+                              >
+                                <text
+                                  flexShrink={0}
+                                  fg={fadeColor(theme.accent, modelMetaAlpha())}
+                                >
+                                  {local.team.name} ({local.team.current()!.length} models)
+                                </text>
+                              </Show>
+                            }
                           >
-                            {local.model.parsed().model}
-                          </text>
-                          <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>{currentProviderLabel()}</text>
+                            <text
+                              flexShrink={0}
+                              fg={fadeColor(theme.warning, modelMetaAlpha())}
+                            >
+                              Team debating · Round {(status() as any).round}/{(status() as any).total}
+                            </text>
+                          </Show>
                           <Show when={showVariant()}>
                             <text fg={fadeColor(theme.textMuted, variantMetaAlpha())}>·</text>
                             <text>

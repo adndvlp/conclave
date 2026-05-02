@@ -397,6 +397,16 @@ export const User = Schema.Struct({
   }),
   system: Schema.optional(Schema.String),
   tools: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
+  team: Schema.optional(
+    Schema.mutable(
+      Schema.Array(
+        Schema.Struct({
+          providerID: ProviderID,
+          modelID: ModelID,
+        }),
+      ),
+    ),
+  ),
 })
   .annotate({ identifier: "UserMessage" })
   .pipe(withStatics((s) => ({ zod: zod(s) })))

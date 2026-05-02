@@ -1,4 +1,35 @@
 <p align="center">
+  <h1>⚡ Conclave</h1>
+</p>
+<p align="center"><strong>Multi-LLM collaborative coding agent.</strong> Fork of <a href="https://github.com/anomalyco/opencode">OpenCode</a> with team debate capabilities.</p>
+<p align="center">
+  <a href="https://github.com/anomalyco/opencode"><img alt="Based on OpenCode" src="https://img.shields.io/badge/based%20on-OpenCode-%23dc2626?style=flat-square" /></a>
+</p>
+
+---
+
+> **Conclave** extends OpenCode with multi-LLM team debates. Configure a team of AI models, and they deliberate in rounds before the winner implements the solution. See `.conclave/specs/breaking-teams.md` for the full vision.
+
+### Installation
+
+```bash
+# Quick install
+curl -fsSL https://raw.githubusercontent.com/<tu-usuario>/conclave/dev/install.sh | bash
+
+# Or from source
+git clone <repo-url> && cd opencode-original
+bun install
+bun run dev
+```
+
+> [!NOTE]
+> Replace `<tu-usuario>` with your GitHub username. The install script clones the repo, installs bun+dependencies, and creates a `conclave` command in `~/.local/bin`.
+
+---
+
+## Original OpenCode README
+
+<p align="center">
   <a href="https://opencode.ai">
     <picture>
       <source srcset="packages/console/app/src/asset/logo-ornate-dark.svg" media="(prefers-color-scheme: dark)">

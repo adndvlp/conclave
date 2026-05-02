@@ -16,7 +16,7 @@ import { InstanceState } from "@/effect/instance-state"
 import { iife } from "@/util/iife"
 import { init } from "#db"
 
-declare const OPENCODE_MIGRATIONS: { sql: string; timestamp: number; name: string }[] | undefined
+declare const CONCLAVE_MIGRATIONS: { sql: string; timestamp: number; name: string }[] | undefined
 
 export const NotFoundError = NamedError.create(
   "NotFoundError",
@@ -29,9 +29,9 @@ const log = Log.create({ service: "db" })
 
 export function getChannelPath() {
   if (["latest", "beta", "prod"].includes(InstallationChannel) || Flag.OPENCODE_DISABLE_CHANNEL_DB)
-    return path.join(Global.Path.data, "opencode.db")
+    return path.join(Global.Path.data, "conclave.db")
   const safe = InstallationChannel.replace(/[^a-zA-Z0-9._-]/g, "-")
-  return path.join(Global.Path.data, `opencode-${safe}.db`)
+  return path.join(Global.Path.data, `conclave-${safe}.db`)
 }
 
 export const Path = iife(() => {
@@ -102,13 +102,13 @@ export const Client = lazy(() => {
 
   // Apply schema migrations
   const entries =
-    typeof OPENCODE_MIGRATIONS !== "undefined"
-      ? OPENCODE_MIGRATIONS
+    typeof CONCLAVE_MIGRATIONS !== "undefined"
+      ? CONCLAVE_MIGRATIONS
       : migrations(path.join(import.meta.dirname, "../../migration"))
   if (entries.length > 0) {
     log.info("applying migrations", {
       count: entries.length,
-      mode: typeof OPENCODE_MIGRATIONS !== "undefined" ? "bundled" : "dev",
+      mode: typeof CONCLAVE_MIGRATIONS !== "undefined" ? "bundled" : "dev",
     })
     if (Flag.OPENCODE_SKIP_MIGRATIONS) {
       for (const item of entries) {

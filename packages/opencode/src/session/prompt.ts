@@ -922,6 +922,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         },
         system: input.system,
         format: input.format,
+        team: input.team,
       }
 
       yield* Effect.addFinalizer(() => instruction.clear(info.id))
@@ -1693,6 +1694,16 @@ export const PromptInput = Schema.Struct({
   format: Schema.optional(MessageV2.Format),
   system: Schema.optional(Schema.String),
   variant: Schema.optional(Schema.String),
+  team: Schema.optional(
+    Schema.mutable(
+      Schema.Array(
+        Schema.Struct({
+          providerID: ProviderID,
+          modelID: ModelID,
+        }),
+      ),
+    ),
+  ),
   parts: Schema.Array(
     Schema.Union([
       MessageV2.TextPartInput,

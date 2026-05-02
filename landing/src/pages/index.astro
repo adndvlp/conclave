@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="Conclave — Open-source multi-LLM collaborative coding agent. Configure a team of AI models that debate and converge on the best solution." />
+  <meta name="keywords" content="AI, multi-llm, collaborative coding, team debate, AI agent, open source, LLM, conclave" />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://adndvlp.github.io/conclave/" />
+
+  <meta property="og:title" content="Conclave — Multi-LLM Collaborative AI Agent" />
+  <meta property="og:description" content="A team of AI models that debate, challenge each other, and converge on the best solution. Open source. MIT licensed." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://adndvlp.github.io/conclave/" />
+  <meta property="og:site_name" content="Conclave" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Conclave — Multi-LLM Collaborative AI Agent" />
+  <meta name="twitter:description" content="A team of AI models that debate, challenge each other, and converge on the best solution." />
+
+  <title>Conclave — Multi-LLM Collaborative AI Agent</title>
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,500;14..32,700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box }
+    html { scroll-behavior:smooth }
+    body {
+      min-height:100vh;
+      background:#08080c;
+      font-family:'Inter',sans-serif;
+      color:#fff;
+      line-height:1.5;
+      -webkit-font-smoothing:antialiased;
+      overflow-x:hidden;
+    }
+
+    #particle-canvas {
+      position:fixed;
+      top:0;left:0;
+      width:100%;height:100%;
+      z-index:0;
+      pointer-events:none;
+      opacity:0.9;
+    }
+
+    .cursor-glow {
+      position:fixed;
+      width:400px;height:400px;
+      background:radial-gradient(circle at center, rgba(180,30,30,0.12) 0%, transparent 70%);
+      border-radius:50%;
+      pointer-events:none;
+      z-index:3;
+      transform:translate(-50%,-50%);
+      transition:opacity 0.2s;
+      opacity:0;
+      mix-blend-mode:overlay;
+    }
+
+    .wrapper {
+      position:relative;
+      z-index:5;
+      max-width:1200px;
+      margin:0 auto;
+      padding:1.5rem 2rem 2rem;
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
+    }
+
+    .top-bar {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding:0.5rem 0 1rem;
+      flex-wrap:wrap;
+      position:fixed;
+      top:0;left:0;right:0;
+      z-index:100;
+      max-width:1200px;
+      margin:0 auto;
+      padding:0.75rem 2rem;
+      background:rgba(8,8,12,0.6);
+      backdrop-filter:blur(16px);
+      -webkit-backdrop-filter:blur(16px);
+      border-bottom:1px solid rgba(255,255,255,0.05);
+    }
+
+    .logo {
+      font-family:'Outfit',sans-serif;
+      font-weight:800;
+      font-size:1.6rem;
+      letter-spacing:-0.02em;
+      background:linear-gradient(135deg, #e85050 0%, #c9973b 60%);
+      -webkit-background-clip:text;
+      background-clip:text;
+      color:transparent;
+    }
+
+    .nav-links {
+      display:flex;
+      gap:2rem;
+    }
+
+    .nav-links a {
+      text-decoration:none;
+      color:#c0c0d0;
+      font-weight:500;
+      font-size:0.95rem;
+      transition:all 0.2s;
+      letter-spacing:-0.01em;
+      border-bottom:2px solid transparent;
+      padding-bottom:4px;
+    }
+
+    .nav-links a:hover {
+      color:#fff;
+      border-bottom-color:#b91c1c;
+    }
+
+    .hero {
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      margin:5rem 0 3rem;
+      animation:fadeUp 0.9s cubic-bezier(0.16,1,0.3,1);
+    }
+
+    .badge {
+      display:inline-block;
+      background:rgba(185,28,28,0.15);
+      backdrop-filter:blur(8px);
+      -webkit-backdrop-filter:blur(8px);
+      padding:0.4rem 1.2rem;
+      border-radius:40px;
+      border:1px solid rgba(185,28,28,0.3);
+      font-size:0.85rem;
+      font-weight:500;
+      color:#e0b0b0;
+      margin-bottom:1.8rem;
+      width:fit-content;
+      box-shadow:0 8px 20px -8px rgba(0,0,0,0.3);
+    }
+
+    h1 {
+      font-family:'Outfit',sans-serif;
+      font-weight:800;
+      font-size:clamp(2.8rem,10vw,5.2rem);
+      line-height:1.08;
+      letter-spacing:-0.03em;
+      max-width:850px;
+      text-wrap:balance;
+      background:linear-gradient(to right, #ffffff, #f0d0d0, #d4a84b);
+      -webkit-background-clip:text;
+      background-clip:text;
+      color:transparent;
+      margin-bottom:1.2rem;
+    }
+
+    .hero-description {
+      font-size:1.15rem;
+      max-width:550px;
+      color:#b0b0c8;
+      margin-bottom:2.2rem;
+      font-weight:400;
+      line-height:1.65;
+    }
+
+    .hero-description strong {
+      color:#d4a84b;
+      font-weight:600;
+    }
+
+    .cta-group {
+      display:flex;
+      gap:1rem;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+
+    .btn {
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      padding:0.85rem 2rem;
+      border-radius:60px;
+      font-weight:600;
+      font-size:1rem;
+      text-decoration:none;
+      transition:all 0.3s cubic-bezier(0.25,0.46,0.45,0.94);
+      border:1px solid transparent;
+      cursor:pointer;
+      background:rgba(20,20,30,0.4);
+      backdrop-filter:blur(12px);
+      -webkit-backdrop-filter:blur(12px);
+      box-shadow:0 10px 25px -5px rgba(0,0,0,0.3);
+      letter-spacing:-0.01em;
+    }
+
+    .btn-primary {
+      background:linear-gradient(145deg, #a21212, #c41e3a);
+      color:#fff;
+      border:1px solid rgba(255,255,255,0.15);
+      box-shadow:0 12px 28px -8px rgba(180,30,30,0.4), 0 0 0 1px rgba(200,120,120,0.15) inset;
+    }
+
+    .btn-primary:hover {
+      transform:translateY(-4px) scale(1.02);
+      box-shadow:0 18px 30px -8px rgba(200,40,40,0.55), 0 0 0 1px rgba(255,180,180,0.25) inset;
+      background:linear-gradient(145deg, #b91c1c, #dc2626);
+    }
+
+    .btn-outline {
+      background:transparent;
+      border:1.5px solid rgba(210,210,230,0.25);
+      color:#e0e0f0;
+      backdrop-filter:blur(12px);
+    }
+
+    .btn-outline:hover {
+      background:rgba(255,255,255,0.04);
+      border-color:#b91c1c;
+      transform:translateY(-3px);
+      box-shadow:0 15px 25px -8px rgba(0,0,0,0.5);
+    }
+
+    .install-box {
+      display:inline-flex;
+      align-items:center;
+      gap:0.6rem;
+      background:rgba(18,18,28,0.55);
+      backdrop-filter:blur(12px);
+      -webkit-backdrop-filter:blur(12px);
+      border:1px solid rgba(255,255,255,0.08);
+      border-radius:50px;
+      padding:0.55rem 0.7rem 0.55rem 1.3rem;
+      font-family:'SF Mono','Fira Code',monospace;
+      font-size:0.8rem;
+      transition:all 0.3s;
+      cursor:pointer;
+    }
+
+    .install-box:hover {
+      border-color:rgba(185,28,28,0.4);
+      box-shadow:0 0 25px rgba(180,30,30,0.15);
+    }
+
+    .install-box .prompt { color:#c9973b; }
+    .install-box .cmd { color:#d0d0e0; }
+    .install-box .copy-btn {
+      background:#a21212;
+      color:#fff;
+      border:none;
+      padding:0.4rem 1rem;
+      border-radius:40px;
+      cursor:pointer;
+      font-family:'Inter',sans-serif;
+      font-size:0.75rem;
+      font-weight:600;
+      transition:background 0.2s;
+    }
+    .install-box .copy-btn:hover { background:#c41e3a; }
+
+    .section-header {
+      text-align:center;
+      margin-bottom:3.5rem;
+      margin-top:2rem;
+    }
+
+    .section-label {
+      font-size:0.75rem;
+      letter-spacing:4px;
+      text-transform:uppercase;
+      color:#b91c1c;
+      margin-bottom:0.5rem;
+      font-weight:600;
+    }
+
+    .section-title {
+      font-family:'Outfit',sans-serif;
+      font-weight:700;
+      font-size:clamp(1.6rem,3.5vw,2.4rem);
+      letter-spacing:-0.02em;
+      background:linear-gradient(110deg, #fff, #f0d0d0, #d4a84b);
+      -webkit-background-clip:text;
+      background-clip:text;
+      color:transparent;
+    }
+
+    .features {
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+      gap:1.8rem;
+      margin:0 0 4rem;
+    }
+
+    .glass-card {
+      background:rgba(16,18,28,0.45);
+      backdrop-filter:blur(14px);
+      -webkit-backdrop-filter:blur(14px);
+      border:1px solid rgba(255,255,255,0.06);
+      border-radius:32px;
+      padding:2rem 1.7rem;
+      box-shadow:0 25px 40px -18px rgba(0,0,0,0.5), 0 0 0 1px rgba(185,28,28,0.06) inset;
+      transition:all 0.35s ease;
+      animation:fadeUp 0.7s ease backwards;
+    }
+    .glass-card:nth-child(1) { animation-delay:0.1s }
+    .glass-card:nth-child(2) { animation-delay:0.2s }
+    .glass-card:nth-child(3) { animation-delay:0.3s }
+    .glass-card:nth-child(4) { animation-delay:0.15s }
+    .glass-card:nth-child(5) { animation-delay:0.25s }
+    .glass-card:nth-child(6) { animation-delay:0.35s }
+
+    .glass-card:hover {
+      transform:translateY(-10px);
+      background:rgba(22,26,38,0.6);
+      border-color:rgba(185,28,28,0.25);
+      box-shadow:0 35px 45px -18px #0a0808, 0 0 0 1.5px rgba(180,30,30,0.25) inset;
+    }
+
+    .card-icon {
+      font-size:1.6rem;
+      color:#c06060;
+      margin-bottom:1.4rem;
+      background:rgba(185,28,28,0.12);
+      width:52px;height:52px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,0.04);
+      transition:0.2s;
+    }
+
+    .glass-card:hover .card-icon {
+      color:#d08080;
+      background:rgba(185,28,28,0.22);
+      transform:scale(1.02);
+    }
+
+    .glass-card h3 {
+      font-family:'Outfit',sans-serif;
+      font-weight:600;
+      font-size:1.4rem;
+      letter-spacing:-0.02em;
+      margin-bottom:0.6rem;
+      color:#f0f4ff;
+    }
+
+    .glass-card p {
+      color:#a8b0c8;
+      font-weight:400;
+      font-size:0.95rem;
+      line-height:1.55;
+    }
+
+    .flow {
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:0.3rem;
+      flex-wrap:wrap;
+      margin:2rem 0;
+    }
+
+    .flow-step {
+      background:rgba(16,18,28,0.5);
+      backdrop-filter:blur(10px);
+      -webkit-backdrop-filter:blur(10px);
+      border:1px solid rgba(255,255,255,0.06);
+      border-radius:24px;
+      padding:1.3rem 1.8rem;
+      text-align:center;
+      transition:all 0.3s;
+      min-width:130px;
+    }
+
+    .flow-step:hover {
+      border-color:rgba(185,28,28,0.3);
+      background:rgba(22,26,38,0.6);
+      transform:translateY(-4px);
+    }
+
+    .flow-step i { font-size:1.4rem; color:#c06060; margin-bottom:0.4rem; }
+    .flow-step .label { font-weight:600; font-size:0.85rem; }
+    .flow-step .sub { font-size:0.7rem; color:#7a7a90; margin-top:0.15rem; }
+    .flow-arrow { color:#c9973b; font-size:1.2rem; margin:0 0.2rem; }
+    .flow-arrow i { opacity:0.6; }
+
+    .tui-preview {
+      background:rgba(16,18,28,0.55);
+      backdrop-filter:blur(12px);
+      -webkit-backdrop-filter:blur(12px);
+      border:1px solid rgba(255,255,255,0.06);
+      border-radius:24px;
+      padding:1.3rem 1.5rem;
+      margin:2.5rem auto 0;
+      max-width:520px;
+      font-family:'SF Mono','Fira Code',monospace;
+      font-size:0.78rem;
+      line-height:1.8;
+      color:#c0c0d8;
+    }
+    .tui-preview .red { color:#c06060; }
+    .tui-preview .gold { color:#c9973b; }
+    .tui-preview .dim { color:#606080; }
+    .tui-preview .faint { opacity:0.35; }
+
+    .stats-grid {
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+      gap:2rem;
+      text-align:center;
+      margin:3rem 0;
+    }
+
+    .stat-number {
+      font-size:2.8rem;
+      font-weight:800;
+      font-family:'Outfit',sans-serif;
+      background:linear-gradient(135deg, #c41e3a, #c9973b);
+      -webkit-background-clip:text;
+      background-clip:text;
+      color:transparent;
+      line-height:1;
+      margin-bottom:0.4rem;
+    }
+
+    .stat-label {
+      font-size:0.75rem;
+      color:#7a7a90;
+      text-transform:uppercase;
+      letter-spacing:2px;
+      font-weight:500;
+    }
+
+    .footer {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      flex-wrap:wrap;
+      padding-top:2.5rem;
+      margin-top:2rem;
+      border-top:1px solid rgba(255,255,255,0.05);
+      color:#707088;
+    }
+
+    .footer a { color:#c9973b; text-decoration:none; }
+    .footer a:hover { text-decoration:underline; }
+    .footer-links { display:flex; gap:1.5rem; }
+    .footer-links a { color:#9090a8; font-size:1.2rem; transition:all 0.2s; }
+    .footer-links a:hover { color:#c06060; transform:translateY(-2px); }
+    .copyright { font-size:0.9rem; letter-spacing:0.3px; }
+
+    @keyframes fadeUp {
+      0% { opacity:0; transform:translateY(30px) }
+      100% { opacity:1; transform:translateY(0) }
+    }
+
+    @media(max-width:768px) {
+      .wrapper { padding:1rem 1.2rem 2rem }
+      .top-bar { flex-direction:column; align-items:flex-start; gap:0.5rem; padding:0.5rem 1.2rem }
+      .nav-links { gap:1.2rem }
+      .hero { margin:4rem 0 2rem }
+      h1 { line-height:1.15 }
+      .cta-group .btn { width:100% }
+      .flow { flex-direction:column; gap:0.5rem }
+      .flow-arrow { transform:rotate(90deg); margin:0 }
+      .install-box { font-size:0.68rem; padding:0.5rem 0.6rem 0.5rem 1rem }
+      .footer { flex-direction:column-reverse; gap:1.2rem; align-items:flex-start }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="particle-canvas"></canvas>
+  <div class="cursor-glow" id="cursorGlow"></div>
+
+  <div class="wrapper">
+    <header class="top-bar">
+      <div class="logo">Conclave</div>
+      <nav class="nav-links">
+        <a href="#how">How it works</a>
+        <a href="#features">Features</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/adndvlp/conclave">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <span class="badge"><i class="fas fa-bolt" style="margin-right:8px"></i>MULTI-LLM COLLABORATIVE AGENT</span>
+        <h1>A team of models that <span style="color:#d4a84b">debate</span> before they code.</h1>
+        <p class="hero-description">
+          Not another AI tool. <strong>Conclave</strong> configures a team of LLMs that deliberate in real rounds — proposing, challenging, and building on each other's ideas — before the winner implements the solution.
+        </p>
+        <div class="cta-group">
+          <div class="install-box" onclick="copyInstall()">
+            <span class="prompt">$</span>
+            <span class="cmd">curl -fsSL https://raw.githubusercontent.com/adndvlp/conclave/main/install.sh | bash</span>
+            <button class="copy-btn" id="copyBtn">Copy</button>
+          </div>
+          <a href="#how" class="btn btn-outline"><i class="fas fa-arrow-down"></i> How it works</a>
+        </div>
+      </section>
+
+      <section id="how">
+        <div class="section-header">
+          <div class="section-label">// Architecture</div>
+          <h2 class="section-title">How Conclave Works</h2>
+        </div>
+
+        <div class="flow">
+          <div class="flow-step"><i class="fas fa-user"></i><div class="label">You ask</div><div class="sub">"Build auth system"</div></div>
+          <div class="flow-arrow"><i class="fas fa-arrow-right"></i></div>
+          <div class="flow-step"><i class="fas fa-users"></i><div class="label">Team debates</div><div class="sub">Multi-round deliberation</div></div>
+          <div class="flow-arrow"><i class="fas fa-arrow-right"></i></div>
+          <div class="flow-step"><i class="fas fa-check-circle"></i><div class="label">Converges</div><div class="sub">By merit & consensus</div></div>
+          <div class="flow-arrow"><i class="fas fa-arrow-right"></i></div>
+          <div class="flow-step"><i class="fas fa-bolt"></i><div class="label">Implements</div><div class="sub">Production code</div></div>
+        </div>
+
+        <div class="tui-preview">
+          <div class="line"><span class="red">Conclave 1</span> <span class="dim">(2 models)</span></div>
+          <div class="line faint">━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+          <div class="line"><span class="red">Team debating</span> <span class="dim">&middot; Round 1/3</span></div>
+          <div class="line dim">  DeepSeek V4 Flash: <span class="gold">LEAD</span> — Best fit for auth logic</div>
+          <div class="line dim">  GLM-5.1: <span class="gold">SUPPORT:DeepSeek</span> — Agreed, backend expert</div>
+          <div class="line faint">━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+          <div class="line"><span class="gold">Converged</span> <span class="dim">&mdash; DeepSeek V4 Flash implements</span></div>
+        </div>
+      </section>
+
+      <section id="features">
+        <div class="section-header">
+          <div class="section-label">// Capabilities</div>
+          <h2 class="section-title">Teams Beat Solo Models</h2>
+        </div>
+
+        <div class="features">
+          <div class="glass-card">
+            <div class="card-icon"><i class="fas fa-check-double"></i></div>
+            <h3>Democratic Consensus</h3>
+            <p>No single model decides. Proposals are debated, challenged, and refined through structured rounds. The team converges on the best approach by merit, not by context window size.</p>
+          </div>
+          <div class="glass-card">
+            <div class="card-icon"><i class="fas fa-magnifying-glass"></i></div>
+            <h3>Blind Spot Detection</h3>
+            <p>One model catches what another misses. Architecture flaws, edge cases, and security vulnerabilities are caught during deliberation — before code is written.</p>
+          </div>
+          <div class="glass-card">
+            <div class="card-icon"><i class="fas fa-chart-line"></i></div>
+            <h3>Live Reasoning Stream</h3>
+            <p>Watch each model's thought process unfold round by round. Collapsible reasoning blocks show exactly how decisions are reached, with per-model breakdowns.</p>
+          </div>
+          <div class="glass-card">
+            <div class="card-icon"><i class="fas fa-plug"></i></div>
+            <h3>Any Provider, Any Model</h3>
+            <p>OpenAI, Anthropic, DeepSeek, Google, NVIDIA, Groq, local via Ollama. Mix and match any combination in the same team.</p>
+          </div>
+          <div class="glass-card">
+            <div class="card-icon"><i class="fas fa-bookmark"></i></div>
+            <h3>Persistent Teams</h3>
+            <p>Create multiple named teams with different model combinations. Switch between them with a single command. Teams survive restarts and sync across sessions.</p>
+          </div>
+          <div class="glass-card">
+            <div class="card-icon"><i class="fas fa-sitemap"></i></div>
+            <h3>Breaking Teams</h3>
+            <p>LLMs autonomously split into sub-teams for complex tasks. Frontend and backend teams work in parallel with cross-team communication and global coordination rounds.</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-header">
+          <div class="section-label">// Why Teams</div>
+          <h2 class="section-title">The Data</h2>
+        </div>
+        <div class="stats-grid">
+          <div><div class="stat-number">2&ndash;5</div><div class="stat-label">Team Members</div></div>
+          <div><div class="stat-number">3</div><div class="stat-label">Max Debate Rounds</div></div>
+          <div><div class="stat-number">Open</div><div class="stat-label">Source (MIT)</div></div>
+          <div><div class="stat-number">All</div><div class="stat-label">Providers Supported</div></div>
+        </div>
+      </section>
+
+      <section id="install">
+        <div class="section-header">
+          <div class="section-label">// Install</div>
+          <h2 class="section-title">Start Your Conclave</h2>
+        </div>
+
+        <div style="text-align:center">
+          <div class="install-box" onclick="copyInstall2()" style="margin:0 auto">
+            <span class="prompt">$</span>
+            <span class="cmd">curl -fsSL https://raw.githubusercontent.com/adndvlp/conclave/main/install.sh | bash</span>
+            <button class="copy-btn" id="copyBtn2">Copy</button>
+          </div>
+          <div class="cta-group" style="justify-content:center; margin-top:1.5rem">
+            <a href="https://github.com/adndvlp/conclave" class="btn btn-primary"><i class="fab fa-github"></i> View on GitHub</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="copyright">
+        Conclave &middot; Multi-LLM Collaborative AI &middot; Built on <a href="https://github.com/anomalyco/opencode">OpenCode</a> &middot; MIT License
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/adndvlp/conclave" aria-label="GitHub"><i class="fab fa-github"></i></a>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    function copyInstall() {
+      navigator.clipboard.writeText("curl -fsSL https://raw.githubusercontent.com/adndvlp/conclave/main/install.sh | bash");
+      var b=document.getElementById('copyBtn');b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},1500);
+    }
+    function copyInstall2() {
+      navigator.clipboard.writeText("curl -fsSL https://raw.githubusercontent.com/adndvlp/conclave/main/install.sh | bash");
+      var b=document.getElementById('copyBtn2');b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},1500);
+    }
+  </script>
+
+  <script>
+    (function(){
+      var c=document.getElementById("particle-canvas"),ctx=c.getContext("2d");
+      var w,h,dpr,particles=[],mx=null,my=null,mr=120,af;
+      var PC=100,MD=140;
+      function resize(){
+        dpr=Math.min(window.devicePixelRatio||1,2);
+        w=window.innerWidth;h=window.innerHeight;
+        c.width=Math.floor(w*dpr);c.height=Math.floor(h*dpr);
+        c.style.width=w+"px";c.style.height=h+"px";
+        ctx.setTransform(dpr,0,0,dpr,0,0);
+        if(particles.length)particles.forEach(function(p){p.x=Math.min(w,Math.max(0,p.x));p.y=Math.min(h,Math.max(0,p.y))});else for(var i=0;i<PC;i++)particles.push({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-0.5)*0.3,vy:(Math.random()-0.5)*0.3,r:Math.random()*2+1,or:Math.random()*2+1});}
+      resize();
+      particles.forEach(function(p){p.or=p.r});
+      function update(){
+        particles.forEach(function(p){
+          p.x+=p.vx;p.y+=p.vy;
+          if(p.x<0||p.x>w)p.vx*=-0.98,p.x=Math.min(Math.max(p.x,0),w);
+          if(p.y<0||p.y>h)p.vy*=-0.98,p.y=Math.min(Math.max(p.y,0),h);
+          p.vx*=0.998;p.vy*=0.998;
+          if(Math.abs(p.vx)<0.05)p.vx+=(Math.random()-0.5)*0.1;
+          if(Math.abs(p.vy)<0.05)p.vy+=(Math.random()-0.5)*0.1;
+          if(mx!==null&&my!==null){var dx=p.x-mx,dy=p.y-my,dist=Math.hypot(dx,dy);
+            if(dist<mr){var f=(mr-dist)/mr,angle=Math.atan2(dy,dx);p.x+=Math.cos(angle)*f*0.8;p.y+=Math.sin(angle)*f*0.8;p.vx+=Math.cos(angle)*f*0.05;p.vy+=Math.sin(angle)*f*0.05;p.r=p.or+f*1.6}else p.r=p.or}else p.r=p.or;
+        });
+      }
+      function draw(){
+        ctx.clearRect(0,0,w,h);
+        for(var i=0;i<particles.length;i++)for(var j=i+1;j<particles.length;j++){
+          var dx=particles[i].x-particles[j].x,dy=particles[i].y-particles[j].y,dist=Math.hypot(dx,dy);
+          if(dist<MD){var op=(1-dist/MD)*0.25;ctx.beginPath();ctx.moveTo(particles[i].x,particles[i].y);ctx.lineTo(particles[j].x,particles[j].y);ctx.strokeStyle="rgba(200,40,40,"+op+")";ctx.lineWidth=0.7;ctx.stroke();}
+        }
+        particles.forEach(function(p){
+          ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+          var color="rgba(200,60,60,0.55)";
+          if(mx&&my){var dx=p.x-mx,dy=p.y-my,dist=Math.hypot(dx,dy);if(dist<mr)color="rgba(220,80,80,"+(0.45+0.45*(1-dist/mr))+")";}
+          ctx.fillStyle=color;ctx.shadowColor="rgba(200,40,40,0.5)";ctx.shadowBlur=p.r*2.5;ctx.fill();ctx.shadowBlur=0;
+        });
+      }
+      function loop(){update();draw();af=requestAnimationFrame(loop);}
+      resize();window.addEventListener("resize",resize);
+      window.addEventListener("mousemove",function(e){mx=e.clientX;my=e.clientY;var g=document.getElementById("cursorGlow");if(g){g.style.opacity="1";g.style.left=e.clientX+"px";g.style.top=e.clientY+"px"}});
+      window.addEventListener("mouseleave",function(){mx=null;my=null;var g=document.getElementById("cursorGlow");if(g)g.style.opacity="0"});
+      window.addEventListener("touchmove",function(e){if(e.touches.length){mx=e.touches[0].clientX;my=e.touches[0].clientY}},{passive:true});
+      window.addEventListener("touchend",function(){mx=null;my=null});
+      loop();
+      window.addEventListener("beforeunload",function(){if(af)cancelAnimationFrame(af)});
+    })();
+  </script>
+</body>
+</html>

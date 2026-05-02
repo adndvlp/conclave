@@ -253,8 +253,22 @@ export function Session() {
   const dialog = useDialog()
   const renderer = useRenderer()
 
+  const [debateStatus, setDebateStatus] = createSignal<{
+    round: number
+    total: number
+    signals: { model: string; signal: string }[]
+  } | null>(null)
+
   event.on("session.status", (evt) => {
     if (evt.properties.sessionID !== route.sessionID) return
+    if (evt.properties.status.type === "team.debate") {
+      setDebateStatus({
+        round: evt.properties.status.round,
+        total: evt.properties.status.total,
+        signals: evt.properties.status.signals,
+      })
+      return
+    }
     if (evt.properties.status.type !== "retry") return
     if (evt.properties.status.message !== SessionRetry.GO_UPSELL_MESSAGE) return
     if (dialog.stack.length > 0) return
@@ -1075,8 +1089,28 @@ export function Session() {
               flexGrow={1}
               scrollAcceleration={scrollAcceleration()}
             >
-              <box height={1} />
-              <For each={messages()}>
+               <box height={1} />
+               <Show when={debateStatus()}>
+                 {(s) => (
+                   <box paddingLeft={3} paddingBottom={1}>
+                     <text fg={theme.textMuted}>
+                       Team debating · Round {s().round}/{s().total}
+                     </text>
+                     <Show when={s().signals.length > 0}>
+                       <box paddingLeft={2} paddingTop={0}>
+                         <For each={s().signals}>
+                           {(sig) => (
+                             <text fg={theme.textMuted}>
+                               {sig.model}: {sig.signal}
+                             </text>
+                           )}
+                         </For>
+                       </box>
+                     </Show>
+                   </box>
+                 )}
+               </Show>
+               <For each={messages()}>
                 {(message, index) => (
                   <Switch>
                     <Match when={message.id === revert()?.messageID}>

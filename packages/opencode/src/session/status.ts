@@ -20,6 +20,39 @@ export const Info = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("busy"),
   }),
+  Schema.Struct({
+    type: Schema.Literal("team.debate"),
+    round: Schema.Number,
+    total: Schema.Number,
+    signals: Schema.Array(
+      Schema.Struct({
+        model: Schema.String,
+        signal: Schema.String,
+      }),
+    ),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("team.breaking"),
+    globalRound: Schema.Number,
+    subTeams: Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        name: Schema.String,
+        status: Schema.Union([
+          Schema.Literal("working"),
+          Schema.Literal("done"),
+          Schema.Literal("blocked"),
+        ]),
+        round: Schema.Number,
+        signals: Schema.Array(
+          Schema.Struct({
+            model: Schema.String,
+            signal: Schema.String,
+          }),
+        ),
+      }),
+    ),
+  }),
 ])
   .annotate({ identifier: "SessionStatus" })
   .pipe(withStatics((s) => ({ zod: zod(s) })))

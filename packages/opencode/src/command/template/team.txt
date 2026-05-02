@@ -1,0 +1,49 @@
+Manage the Conclave team configuration.
+
+The team config lives under the `team` key in `opencode.json` (project root) or `.opencode/config.json`.
+
+Schema:
+```json
+{
+  "team": {
+    "enabled": true,
+    "members": [
+      { "providerID": "anthropic", "modelID": "claude-opus-4-7" },
+      { "providerID": "google",    "modelID": "gemini-2.5-pro"  }
+    ],
+    "maxRounds": 3
+  }
+}
+```
+
+User arguments: $ARGUMENTS
+
+## What to do
+
+Parse the arguments and act accordingly:
+
+**No arguments / "status" / "list"**
+Read the config file and display:
+- Team enabled: yes/no
+- Members: formatted list of providerID/modelID pairs
+- Max rounds: N
+If no team config exists yet, say so and show the example schema above.
+
+**"add <providerID/modelID>"** — e.g. `add anthropic/claude-opus-4-7`
+Add that member to `team.members` in the config file. Create the team section if it doesn't exist.
+Default `enabled: true` and `maxRounds: 3` if creating fresh.
+
+**"remove <providerID/modelID>"** — e.g. `remove google/gemini-2.5-pro`
+Remove that member from `team.members`.
+
+**"on"** — set `team.enabled = true`
+**"off"** — set `team.enabled = false`
+
+**"clear"** — remove all members from the team
+
+## Rules
+- Always read the config file first before writing.
+- Preserve all existing non-team config fields when writing.
+- Valid JSON only — no trailing commas.
+- After any write operation, confirm what changed.
+- If the config file doesn't exist, create `opencode.json` at the project root.

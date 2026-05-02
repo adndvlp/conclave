@@ -262,6 +262,12 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     })
   }
 
+  const chooseTeam = () => {
+    void import("@/components/dialog-select-team").then((x) => {
+      dialog.show(() => <x.DialogSelectTeam />)
+    })
+  }
+
   const chooseMcp = () => {
     void import("@/components/dialog-select-mcp").then((x) => {
       dialog.show(() => <x.DialogSelectMcp />)
@@ -520,6 +526,13 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       keybind: "mod+'",
       slash: "model",
       onSelect: chooseModel,
+    }),
+    modelCommand({
+      id: "team.choose",
+      title: language.t("command.team.choose"),
+      description: language.t("command.team.choose.description"),
+      slash: "team",
+      onSelect: chooseTeam,
     }),
     modelCommand({
       id: "model.variant.cycle",

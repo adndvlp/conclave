@@ -413,8 +413,29 @@ export function SessionTurn(
               </Show>
               <Show when={showThinking()}>
                 <div data-slot="session-turn-thinking">
-                  <TextShimmer text={i18n.t("ui.sessionTurn.status.thinking")} />
-                  <Show when={!showReasoningSummaries()}>
+                  <Show
+                    when={status().type === "team.debate"}
+                    fallback={<TextShimmer text={i18n.t("ui.sessionTurn.status.thinking")} />}
+                  >
+                    {(() => {
+                      const s = status() as { type: "team.debate"; round: number; total: number; signals: { model: string; signal: string }[] }
+                      return (
+                        <>
+                          <TextShimmer text={i18n.t("ui.sessionTurn.status.debating", { round: s.round, total: s.total })} />
+                          <Show when={s.signals.length > 0}>
+                            <div data-slot="session-turn-team-signals">
+                              {s.signals.map((sig) => (
+                                <span data-slot="session-turn-team-signal">
+                                  {sig.model}: {sig.signal}
+                                </span>
+                              ))}
+                            </div>
+                          </Show>
+                        </>
+                      )
+                    })()}
+                  </Show>
+                  <Show when={status().type !== "team.debate" && !showReasoningSummaries()}>
                     <TextReveal
                       text={reasoningHeading()}
                       class="session-turn-thinking-heading"

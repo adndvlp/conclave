@@ -16,7 +16,7 @@ import { FileIgnore } from "./ignore"
 import { Protected } from "./protected"
 import * as Log from "@opencode-ai/core/util/log"
 
-declare const OPENCODE_LIBC: string | undefined
+declare const CONCLAVE_LIBC: string | undefined
 
 const log = Log.create({ service: "file.watcher" })
 const SUBSCRIBE_TIMEOUT_MS = 10_000
@@ -34,7 +34,7 @@ export const Event = {
 const watcher = lazy((): typeof import("@parcel/watcher") | undefined => {
   try {
     const binding = require(
-      `@parcel/watcher-${process.platform}-${process.arch}${process.platform === "linux" ? `-${OPENCODE_LIBC || "glibc"}` : ""}`,
+      `@parcel/watcher-${process.platform}-${process.arch}${process.platform === "linux" ? `-${CONCLAVE_LIBC || "glibc"}` : ""}`,
     )
     return createWrapper(binding) as typeof import("@parcel/watcher")
   } catch (error) {

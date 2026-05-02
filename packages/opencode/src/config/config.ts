@@ -240,6 +240,26 @@ export const Info = Schema.Struct({
       }),
     }),
   ),
+  team: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.optional(Schema.Boolean).annotate({
+        description: "Enable multi-LLM team debate before responding",
+      }),
+      members: Schema.optional(
+        Schema.mutable(
+          Schema.Array(
+            Schema.Struct({
+              providerID: Schema.String.annotate({ description: "Provider ID, e.g. anthropic, openai, google" }),
+              modelID: Schema.String.annotate({ description: "Model ID, e.g. claude-opus-4-7, gpt-4o" }),
+            }),
+          ),
+        ),
+      ).annotate({ description: "Team members — each is a providerID + modelID pair" }),
+      maxRounds: Schema.optional(Schema.Number).annotate({
+        description: "Maximum debate rounds before forcing a winner (default: 3)",
+      }),
+    }),
+  ).annotate({ description: "Conclave team configuration — multi-LLM collaborative debate" }),
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),
@@ -298,7 +318,7 @@ export interface Interface {
 export class Service extends Context.Service<Service, Interface>()("@opencode/Config") {}
 
 function globalConfigFile() {
-  const candidates = ["opencode.jsonc", "opencode.json", "config.json"].map((file) =>
+  const candidates = [    "conclave.jsonc", "conclave.json", "config.json"].map((file) =>
     path.join(Global.Path.config, file),
   )
   for (const file of candidates) {
@@ -394,8 +414,8 @@ export const layer = Layer.effect(
     const loadGlobal = Effect.fnUntraced(function* () {
       let result: Info = {}
       result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "config.json")))
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "opencode.json")))
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "opencode.jsonc")))
+      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "conclave.json")))
+      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "conclave.jsonc")))
 
       const legacy = path.join(Global.Path.config, "config")
       if (existsSync(legacy)) {
@@ -458,7 +478,7 @@ export const layer = Layer.effect(
 
         const pluginScopeForSource = Effect.fnUntraced(function* (source: string) {
           if (source.startsWith("http://") || source.startsWith("https://")) return "global"
-          if (source === "OPENCODE_CONFIG_CONTENT") return "local"
+          if (source === "CONCLAVE_CONFIG_CONTENT") return "local"
           if (containsPath(source, ctx)) return "local"
           return "global"
         })
@@ -520,7 +540,7 @@ export const layer = Layer.effect(
         }
 
         if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
-          for (const file of yield* ConfigPaths.files("opencode", ctx.directory, ctx.worktree).pipe(Effect.orDie)) {
+          for (const file of yield* ConfigPaths.files("conclave", ctx.directory, ctx.worktree).pipe(Effect.orDie)) {
             yield* merge(file, yield* loadFile(file), "local")
           }
         }
@@ -532,14 +552,14 @@ export const layer = Layer.effect(
         const directories = yield* ConfigPaths.directories(ctx.directory, ctx.worktree)
 
         if (Flag.OPENCODE_CONFIG_DIR) {
-          log.debug("loading config from OPENCODE_CONFIG_DIR", { path: Flag.OPENCODE_CONFIG_DIR })
+          log.debug("loading config from CONCLAVE_CONFIG_DIR", { path: Flag.OPENCODE_CONFIG_DIR })
         }
 
         const deps: Fiber.Fiber<void, never>[] = []
 
         for (const dir of directories) {
-          if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
-            for (const file of ["opencode.json", "opencode.jsonc"]) {
+          if (dir.endsWith(".conclave") || dir === Flag.OPENCODE_CONFIG_DIR) {
+            for (const file of ["conclave.json", "conclave.jsonc"]) {
               const source = path.join(dir, file)
               log.debug(`loading config from ${source}`)
               yield* merge(source, yield* loadFile(source))
@@ -577,20 +597,20 @@ export const layer = Layer.effect(
           result.command = mergeDeep(result.command ?? {}, yield* Effect.promise(() => ConfigCommand.load(dir)))
           result.agent = mergeDeep(result.agent ?? {}, yield* Effect.promise(() => ConfigAgent.load(dir)))
           result.agent = mergeDeep(result.agent ?? {}, yield* Effect.promise(() => ConfigAgent.loadMode(dir)))
-          // Auto-discovered plugins under `.opencode/plugin(s)` are already local files, so ConfigPlugin.load
+          // Auto-discovered plugins under `.conclave/plugin(s)` are already local files, so ConfigPlugin.load
           // returns normalized Specs and we only need to attach origin metadata here.
           const list = yield* Effect.promise(() => ConfigPlugin.load(dir))
           yield* mergePluginOrigins(dir, list)
         }
 
-        if (process.env.OPENCODE_CONFIG_CONTENT) {
-          const source = "OPENCODE_CONFIG_CONTENT"
-          const next = yield* loadConfig(process.env.OPENCODE_CONFIG_CONTENT, {
+        if (process.env.CONCLAVE_CONFIG_CONTENT) {
+          const source = "CONCLAVE_CONFIG_CONTENT"
+          const next = yield* loadConfig(process.env.CONCLAVE_CONFIG_CONTENT, {
             dir: ctx.directory,
             source,
           })
           yield* merge(source, next, "local")
-          log.debug("loaded custom config from OPENCODE_CONFIG_CONTENT")
+          log.debug("loaded custom config from CONCLAVE_CONFIG_CONTENT")
         }
 
         const activeAccount = Option.getOrUndefined(
@@ -606,8 +626,8 @@ export const layer = Layer.effect(
               { concurrency: 2 },
             )
             if (Option.isSome(tokenOpt)) {
-              process.env["OPENCODE_CONSOLE_TOKEN"] = tokenOpt.value
-              yield* env.set("OPENCODE_CONSOLE_TOKEN", tokenOpt.value)
+              process.env["CONCLAVE_CONSOLE_TOKEN"] = tokenOpt.value
+              yield* env.set("CONCLAVE_CONSOLE_TOKEN", tokenOpt.value)
             }
 
             if (Option.isSome(configOpt)) {
@@ -634,7 +654,7 @@ export const layer = Layer.effect(
 
         const managedDir = ConfigManaged.managedConfigDir()
         if (existsSync(managedDir)) {
-          for (const file of ["opencode.json", "opencode.jsonc"]) {
+          for (const file of ["conclave.json", "conclave.jsonc"]) {
             const source = path.join(managedDir, file)
             yield* merge(source, yield* loadFile(source), "global")
           }

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {},
+  "permission": {
+    "edit": {
+      "packages/opencode/migration/*": "deny",
+    },
+  },
+  "mcp": {},
+  "tools": {
+    "github-triage": false,
+    "github-pr-search": false,
+  },
+  // Conclave team — uncomment and set providers you have configured
+  // "team": {
+  //   "enabled": true,
+  //   "members": [
+  //     { "providerID": "anthropic", "modelID": "claude-sonnet-4-6" },
+  //     { "providerID": "google",    "modelID": "gemini-2.5-flash"  },
+  //     { "providerID": "deepseek",  "modelID": "deepseek-chat"     }
+  //   ],
+  //   "maxRounds": 3
+  // },
+}

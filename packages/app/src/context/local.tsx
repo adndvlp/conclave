@@ -16,6 +16,7 @@ type State = {
   agent?: string
   model?: ModelKey
   variant?: string | null
+  team?: ModelKey[]
 }
 
 type Saved = {
@@ -48,6 +49,7 @@ const clone = (value: State | undefined) => {
   return {
     ...value,
     model: value.model ? { ...value.model } : undefined,
+    team: value.team ? [...value.team] : undefined,
   } satisfies State
 }
 
@@ -249,6 +251,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         agent: agent.current()?.name,
         model: model ? { providerID: model.provider.id, modelID: model.id } : undefined,
         variant: selected(),
+        team: scope()?.team,
       } satisfies State
     }
 
@@ -351,10 +354,23 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       },
     }
 
+    const team = {
+      current() {
+        return scope()?.team
+      },
+      set(members: ModelKey[]) {
+        write({ team: members.length > 0 ? members : undefined })
+      },
+      clear() {
+        write({ team: undefined })
+      },
+    }
+
     const result = {
       slug: createMemo(() => base64Encode(sdk.directory)),
       model,
       agent,
+      team,
       session: {
         reset() {
           setStore("draft", undefined)

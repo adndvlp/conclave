@@ -34,6 +34,7 @@ export type FollowupDraft = {
   agent: string
   model: { providerID: string; modelID: string }
   variant?: string
+  team?: { providerID: string; modelID: string }[]
 }
 
 type FollowupSendInput = {
@@ -159,6 +160,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
       messageID,
       parts: requestParts,
       variant: input.draft.variant,
+      team: input.draft.team,
     })
     return true
   } catch (err) {
@@ -403,6 +405,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       agent,
       model,
       variant,
+      team: local.team.current(),
     }
 
     const clearInput = () => {

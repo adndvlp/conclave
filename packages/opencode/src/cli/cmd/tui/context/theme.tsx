@@ -25,6 +25,7 @@ import nord from "./theme/nord.json" with { type: "json" }
 import osakaJade from "./theme/osaka-jade.json" with { type: "json" }
 import onedark from "./theme/one-dark.json" with { type: "json" }
 import opencode from "./theme/opencode.json" with { type: "json" }
+import conclave from "./theme/conclave.json" with { type: "json" }
 import orng from "./theme/orng.json" with { type: "json" }
 import lucentOrng from "./theme/lucent-orng.json" with { type: "json" }
 import palenight from "./theme/palenight.json" with { type: "json" }
@@ -92,6 +93,7 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   ["catppuccin-frappe"]: catppuccinFrappe,
   ["catppuccin-macchiato"]: catppuccinMacchiato,
   cobalt2,
+  conclave,
   cursor,
   dracula,
   everforest,
@@ -155,7 +157,7 @@ const [store, setStore] = createStore<State>({
   themes: listThemes(),
   mode: "dark",
   lock: undefined,
-  active: "opencode",
+  active: "conclave",
   ready: false,
 })
 
@@ -320,8 +322,8 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
         }
         draft.mode = mode
         draft.lock = lock
-        const active = config.theme ?? kv.get("theme", "opencode")
-        draft.active = typeof active === "string" ? active : "opencode"
+        const active = config.theme ?? kv.get("theme", "conclave")
+        draft.active = typeof active === "string" ? active : "conclave"
         draft.ready = false
       }),
     )
@@ -359,7 +361,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
             systemTheme = undefined
             syncThemes()
             if (store.active === "system") {
-              setStore("active", "opencode")
+            setStore("active", "conclave")
             }
             return
           }
