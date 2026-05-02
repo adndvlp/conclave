@@ -115,8 +115,9 @@ const cli = yargs(args)
       run_id: processMetadata.runID,
     })
 
-    const marker = path.join(Global.Path.data, "conclave.db")
-    if (!(await Filesystem.exists(marker))) {
+    // Check if any conclave db exists (name varies by channel: conclave.db, conclave-local.db, etc.)
+    const dbFiles = (await Filesystem.readdir(Global.Path.data).catch(() => [])).filter((f: string) => f.startsWith("conclave") && f.endsWith(".db"))
+    if (dbFiles.length === 0) {
       const tty = process.stderr.isTTY
       process.stderr.write("Performing one time database migration, may take a few minutes..." + EOL)
       const width = 36

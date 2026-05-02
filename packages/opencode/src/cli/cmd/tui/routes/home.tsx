@@ -9,6 +9,27 @@ import { useRouteData } from "@tui/context/route"
 import { usePromptRef } from "../context/prompt"
 import { useLocal } from "../context/local"
 import { TuiPluginRuntime } from "@/cli/cmd/tui/plugin/runtime"
+import { useTheme } from "../context/theme"
+
+const WORDMARK = [
+  `  ██████╗ ██████╗ ███╗   ██╗ ██████╗██╗      █████╗ ██╗   ██╗███████╗`,
+  `  ██╔════╝██╔═══██╗████╗  ██║██╔════╝██║     ██╔══██╗██║   ██║██╔════╝`,
+  `  ██║     ██║   ██║██╔██╗ ██║██║     ██║     ███████║██║   ██║█████╗  `,
+  `  ██║     ██║   ██║██║╚██╗██║██║     ██║     ██╔══██║╚██╗ ██╔╝██╔══╝  `,
+  `  ╚██████╗╚██████╔╝██║ ╚████║╚██████╗███████╗██║  ██║ ╚████╔╝ ███████╗`,
+  `   ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝ ╚═════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝`,
+]
+
+function Wordmark() {
+  const { theme } = useTheme()
+  return (
+    <box flexDirection="column" alignItems="center">
+      {WORDMARK.map((line) => (
+        <text fg={theme.primary}>{line}</text>
+      ))}
+    </box>
+  )
+}
 
 let once = false
 const placeholder = {
@@ -58,6 +79,8 @@ export function Home() {
         <box flexGrow={1} minHeight={0} />
         <box height={4} minHeight={0} flexShrink={1} />
         <box flexShrink={0}>
+          <Wordmark />
+          <box height={1} />
           <TuiPluginRuntime.Slot name="home_logo" mode="replace">
             <Logo />
           </TuiPluginRuntime.Slot>
