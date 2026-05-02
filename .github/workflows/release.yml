@@ -8,29 +8,12 @@ jobs:
     strategy:
       matrix:
         include:
-          # Native
           - os: ubuntu-latest
-            target: bun-linux-x64
-            arch: x64
             name: linux-x64
           - os: macos-latest
-            target: bun-darwin-arm64
-            arch: arm64
             name: darwin-arm64
           - os: windows-latest
-            target: bun-windows-x64
-            arch: x64
             name: windows-x64
-          # Cross-compile: linux arm64 from x64
-          - os: ubuntu-latest
-            target: bun-linux-arm64
-            arch: arm64
-            name: linux-arm64
-          # Cross-compile: macos x64 from arm64
-          - os: macos-latest
-            target: bun-darwin-x64
-            arch: x64
-            name: darwin-x64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
@@ -41,29 +24,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Build
-        run: |
-          # Native build — use build script
-          bun run packages/opencode/script/build.ts --single --skip-install --skip-embed-web-ui
-        if: ${{ !contains(matrix.name, 'linux-arm64') && !contains(matrix.name, 'darwin-x64') }}
-        env:
-          CONCLAVE_CHANNEL: stable
-        shell: bash
-
-      - name: Build (cross-compile)
-        run: |
-          # Install target platform packages
-          bun install --os="*" --cpu="*" @opentui/core
-          bun install --os="*" --cpu="*" @parcel/watcher
-          # Cross-compile via bun --target
-          bun build packages/opencode/src/index.ts \
-            --compile \
-            --target=${{ matrix.target }} \
-            --outfile=conclave \
-            --conditions=browser \
-            --minify \
-            --external=node-gyp \
-            --tsconfig-override packages/opencode/tsconfig.json
-        if: ${{ contains(matrix.name, 'linux-arm64') || contains(matrix.name, 'darwin-x64') }}
+        run: bun run packages/opencode/script/build.ts --single --skip-install --skip-embed-web-ui
         env:
           CONCLAVE_CHANNEL: stable
         shell: bash
