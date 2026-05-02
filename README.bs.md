@@ -1,3 +1,5 @@
+> This is a translation of the original OpenCode README. For Conclave-specific content, see the [English README](README.md).
+
 <p align="center">
   <a href="https://opencode.ai">
     <picture>
