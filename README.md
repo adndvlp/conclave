@@ -3,27 +3,45 @@
 </p>
 <p align="center"><strong>Multi-LLM collaborative coding agent.</strong> Fork of <a href="https://github.com/anomalyco/opencode">OpenCode</a> with team debate capabilities.</p>
 <p align="center">
-  <a href="https://github.com/anomalyco/opencode"><img alt="Based on OpenCode" src="https://img.shields.io/badge/based%20on-OpenCode-%23dc2626?style=flat-square" /></a>
+  <a href="https://github.com/anomalyco/opencode"><img alt="Forked from OpenCode" src="https://img.shields.io/badge/forked%20from-OpenCode-%238b0000?style=flat-square" /></a>
+  <a href="https://github.com/adndvlp/conclave/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/adndvlp/conclave/publish.yml?style=flat-square&branch=main" /></a>
 </p>
 
 ---
 
-> **Conclave** extends OpenCode with multi-LLM team debates. Configure a team of AI models, and they deliberate in rounds before the winner implements the solution. See `.conclave/specs/breaking-teams.md` for the full vision.
+> **Conclave** extends OpenCode with multi-LLM team debates. Configure a team of AI models, and they deliberate in structured rounds — proposing, challenging, and building on each other's ideas — before the winner implements the solution.
 
 ### Installation
 
 ```bash
 # Quick install
-curl -fsSL https://raw.githubusercontent.com/<tu-usuario>/conclave/dev/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/adndvlp/conclave/main/install.sh | bash
 
 # Or from source
-git clone <repo-url> && cd opencode-original
+git clone https://github.com/adndvlp/conclave.git && cd conclave
 bun install
 bun run dev
 ```
 
-> [!NOTE]
-> Replace `<tu-usuario>` with your GitHub username. The install script clones the repo, installs bun+dependencies, and creates a `conclave` command in `~/.local/bin`.
+### Key Differences from OpenCode
+
+- **Multi-LLM team debates** with signal-based consensus (LEAD, SUPPORT, ALIGN, BUILD, CHALLENGE)
+- **Breaking Teams**: LLMs autonomously split into sub-teams for parallel work
+- **Persistent teams** with multiple named configurations
+- **Winner selection** by endorsement score, not context window size
+- **Cardinal red + gold** branding and theme
+- **Config isolation**: uses `~/.config/conclave/` instead of `~/.config/opencode/`
+- See `.conclave/specs/breaking-teams.md` for the full roadmap
+
+### Upstream Sync
+
+This fork tracks [OpenCode](https://github.com/anomalyco/opencode). To sync upstream changes:
+
+```bash
+git remote add upstream https://github.com/anomalyco/opencode.git
+git fetch upstream
+git merge upstream/main
+```
 
 ---
 
@@ -43,31 +61,6 @@ bun run dev
   <a href="https://opencode.ai/discord"><img alt="Discord" src="https://img.shields.io/discord/1391832426048651334?style=flat-square&label=discord" /></a>
   <a href="https://www.npmjs.com/package/opencode-ai"><img alt="npm" src="https://img.shields.io/npm/v/opencode-ai?style=flat-square" /></a>
   <a href="https://github.com/anomalyco/opencode/actions/workflows/publish.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/anomalyco/opencode/publish.yml?style=flat-square&branch=dev" /></a>
-</p>
-
-<p align="center">
-  <a href="README.md">English</a> |
-  <a href="README.zh.md">简体中文</a> |
-  <a href="README.zht.md">繁體中文</a> |
-  <a href="README.ko.md">한국어</a> |
-  <a href="README.de.md">Deutsch</a> |
-  <a href="README.es.md">Español</a> |
-  <a href="README.fr.md">Français</a> |
-  <a href="README.it.md">Italiano</a> |
-  <a href="README.da.md">Dansk</a> |
-  <a href="README.ja.md">日本語</a> |
-  <a href="README.pl.md">Polski</a> |
-  <a href="README.ru.md">Русский</a> |
-  <a href="README.bs.md">Bosanski</a> |
-  <a href="README.ar.md">العربية</a> |
-  <a href="README.no.md">Norsk</a> |
-  <a href="README.br.md">Português (Brasil)</a> |
-  <a href="README.th.md">ไทย</a> |
-  <a href="README.tr.md">Türkçe</a> |
-  <a href="README.uk.md">Українська</a> |
-  <a href="README.bn.md">বাংলা</a> |
-  <a href="README.gr.md">Ελληνικά</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
 </p>
 
 [![OpenCode Terminal UI](packages/web/src/assets/lander/screenshot.png)](https://opencode.ai)
