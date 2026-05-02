@@ -1013,6 +1013,9 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
   const agents = createMemo(() => (props.parts?.filter((p) => p.type === "agent") as AgentPart[]) ?? [])
 
   const model = createMemo(() => {
+    if (props.message.role === "user" && props.message.team) {
+      return `Team (${props.message.team.length} models)`
+    }
     const providerID = props.message.model?.providerID
     const modelID = props.message.model?.modelID
     if (!providerID || !modelID) return ""
@@ -1404,6 +1407,14 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   const model = createMemo(() => {
     if (props.message.role !== "assistant") return ""
     const message = props.message as AssistantMessage
+    
+    const parentMsg = data.store.message?.[message.sessionID]?.find((m) => m.id === message.parentID)
+    if (parentMsg && parentMsg.role === "user" && parentMsg.team) {
+      if (typeof message.time.completed !== "number") {
+        return `Team (${parentMsg.team.length} models)`
+      }
+    }
+    
     const match = data.store.provider?.all?.find((p) => p.id === message.providerID)
     return match?.models?.[message.modelID]?.name ?? message.modelID
   })

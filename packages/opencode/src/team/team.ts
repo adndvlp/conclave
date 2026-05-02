@@ -4,6 +4,7 @@ import { Provider } from "@/provider/provider"
 import { SessionStatus } from "@/session/status"
 import { runBreakingTeams, type Participant, type RoundSignal } from "./debate"
 import { CLI_PROVIDER_IDS, cliSyntheticModel, detectCli } from "./cli-adapter"
+import { EffectBridge } from "@/effect/bridge"
 import type { LLM } from "@/session/llm"
 import type { ModelMessage } from "ai"
 
@@ -102,6 +103,49 @@ export const layer = Layer.effect(
             subTeams: [],
           })
 
+          // Bridge for calling Effects from async/Promise callbacks
+          const bridge = yield* EffectBridge.make()
+
+          // Per-participant accumulated streaming text
+          const participantTexts = new Map<string, { text: string; round: number }>()
+          let lastChunkEmit = 0
+          let chunkTimeout: NodeJS.Timeout | null = null
+
+          const onParticipantChunk = (modelName: string, text: string, round: number) => {
+            participantTexts.set(modelName, { text, round })
+            const now = Date.now()
+
+            const flush = () => {
+              lastChunkEmit = Date.now()
+              if (chunkTimeout) {
+                clearTimeout(chunkTimeout)
+                chunkTimeout = null
+              }
+              bridge.fork(
+                Effect.gen(function* () {
+                  const current = yield* status.get(sessionID as any)
+                  if (current.type !== "team.breaking") return
+                  yield* status.set(sessionID as any, {
+                    ...current,
+                    participantStreams: Array.from(participantTexts.entries()).map(([name, d]) => ({
+                      modelName: name,
+                      text: d.text,
+                      round: d.round,
+                    })),
+                  })
+                }),
+              )
+            }
+
+            if (now - lastChunkEmit < 250) {
+              if (!chunkTimeout) {
+                chunkTimeout = setTimeout(flush, 250 - (now - lastChunkEmit))
+              }
+              return
+            }
+            flush()
+          }
+
           const onBreakingProgress = (
             subTeamsInfo: Array<{
               id: string
@@ -112,10 +156,14 @@ export const layer = Layer.effect(
             }>,
             globalRoundNum: number,
           ) =>
-            status.set(sessionID as any, {
-              type: "team.breaking",
-              globalRound: globalRoundNum,
-              subTeams: subTeamsInfo,
+            Effect.gen(function* () {
+              const current = yield* status.get(sessionID as any)
+              yield* status.set(sessionID as any, {
+                type: "team.breaking",
+                globalRound: globalRoundNum,
+                subTeams: subTeamsInfo,
+                participantStreams: current.type === "team.breaking" ? current.participantStreams : undefined,
+              })
             })
 
           const debateResult = yield* runBreakingTeams(
@@ -127,6 +175,7 @@ export const layer = Layer.effect(
             globalRoundInterval,
             onBreakingProgress,
             onRoundComplete,
+            onParticipantChunk,
           )
 
           log.info("team.done", {

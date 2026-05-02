@@ -52,6 +52,15 @@ export const Info = Schema.Union([
         ),
       }),
     ),
+    participantStreams: Schema.optional(
+      Schema.Array(
+        Schema.Struct({
+          modelName: Schema.String,
+          text: Schema.String,
+          round: Schema.Number,
+        }),
+      ),
+    ),
   }),
 ])
   .annotate({ identifier: "SessionStatus" })

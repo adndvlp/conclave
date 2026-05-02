@@ -384,6 +384,22 @@ export type SessionStatus =
         signal: string
       }>
     }
+  | {
+      type: "team.breaking"
+      globalRound: number
+      subTeams: Array<{
+        id: string
+        name: string
+        status: "working" | "done" | "blocked"
+        round: number
+        signals: Array<{ model: string; signal: string }>
+      }>
+      participantStreams?: Array<{
+        modelName: string
+        text: string
+        round: number
+      }>
+    }
 
 export type EventSessionStatus = {
   type: "session.status"

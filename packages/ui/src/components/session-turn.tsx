@@ -143,6 +143,66 @@ function heading(text: string) {
   }
 }
 
+function TeamBreakingStatus(props: { status: any; i18n: any }) {
+  const s = () => props.status as {
+    type: "team.breaking"
+    globalRound: number
+    participantStreams?: { modelName: string; text: string; round: number }[]
+  }
+  const [expanded, setExpanded] = createSignal<string | null>(null)
+  return (
+    <div data-slot="session-turn-team-breaking">
+      <TextShimmer text={`Debating · round ${s().globalRound + 1}`} />
+      <Show when={(s().participantStreams ?? []).length > 0}>
+        <div data-slot="session-turn-participant-streams">
+          <For each={s().participantStreams ?? []}>
+            {(p) => {
+              const isOpen = () => expanded() === p.modelName
+              return (
+                <div data-slot="session-turn-participant-stream">
+                  <button
+                    type="button"
+                    data-slot="session-turn-participant-toggle"
+                    data-open={isOpen() || undefined}
+                    onClick={() => setExpanded(isOpen() ? null : p.modelName)}
+                  >
+                    <div data-slot="session-turn-participant-dot" />
+                    <span>{p.modelName}</span>
+                    <Icon name={isOpen() ? "chevron-down" : "chevron-right"} size="small" />
+                  </button>
+                  <Show when={isOpen()}>
+                    <div data-slot="session-turn-participant-text">
+                      <pre>{p.text}</pre>
+                    </div>
+                  </Show>
+                </div>
+              )
+            }}
+          </For>
+        </div>
+      </Show>
+    </div>
+  )
+}
+
+function TeamDebateStatus(props: { status: any; i18n: any }) {
+  const s = () => props.status as { type: "team.debate"; round: number; total: number; signals: { model: string; signal: string }[] }
+  return (
+    <>
+      <TextShimmer text={props.i18n.t("ui.sessionTurn.status.debating", { round: s().round, total: s().total })} />
+      <Show when={s().signals.length > 0}>
+        <div data-slot="session-turn-team-signals">
+          {s().signals.map((sig) => (
+            <span data-slot="session-turn-team-signal">
+              {sig.model}: {sig.signal}
+            </span>
+          ))}
+        </div>
+      </Show>
+    </>
+  )
+}
+
 export function SessionTurn(
   props: ParentProps<{
     sessionID: string
@@ -415,27 +475,18 @@ export function SessionTurn(
                 <div data-slot="session-turn-thinking">
                   <Show
                     when={status().type === "team.debate"}
-                    fallback={<TextShimmer text={i18n.t("ui.sessionTurn.status.thinking")} />}
+                    fallback={
+                      <Show
+                        when={status().type === "team.breaking"}
+                        fallback={<TextShimmer text={i18n.t("ui.sessionTurn.status.thinking")} />}
+                      >
+                        <TeamBreakingStatus status={status()} i18n={i18n} />
+                      </Show>
+                    }
                   >
-                    {(() => {
-                      const s = status() as { type: "team.debate"; round: number; total: number; signals: { model: string; signal: string }[] }
-                      return (
-                        <>
-                          <TextShimmer text={i18n.t("ui.sessionTurn.status.debating", { round: s.round, total: s.total })} />
-                          <Show when={s.signals.length > 0}>
-                            <div data-slot="session-turn-team-signals">
-                              {s.signals.map((sig) => (
-                                <span data-slot="session-turn-team-signal">
-                                  {sig.model}: {sig.signal}
-                                </span>
-                              ))}
-                            </div>
-                          </Show>
-                        </>
-                      )
-                    })()}
+                    <TeamDebateStatus status={status()} i18n={i18n} />
                   </Show>
-                  <Show when={status().type !== "team.debate" && !showReasoningSummaries()}>
+                  <Show when={status().type !== "team.debate" && status().type !== "team.breaking" && !showReasoningSummaries()}>
                     <TextReveal
                       text={reasoningHeading()}
                       class="session-turn-thinking-heading"

@@ -170,6 +170,8 @@ function callParticipant(
           }
         }
 
+        onChunk(accumulated)
+
         resume(
           Effect.succeed({
             participant: p,
@@ -387,6 +389,7 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
   globalRoundInterval = 1,
   onProgress?: BreakingProgressCallback,
   onRoundComplete?: (round: number, text: string) => Effect.Effect<void>,
+  onParticipantChunk?: (modelName: string, text: string, round: number) => void,
 ): Generator<any, BreakingTeamsResult> {
   // ── Phase 0: decision round ─────────────────────────────────────────────
   const phase0Results = yield* Effect.all(
@@ -402,7 +405,7 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
           maxRounds: 1,
           allowBreak: true,
         }),
-        { maxOutputTokens: 512, round: 1 },
+        { maxOutputTokens: 512, round: 1, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, 0) : undefined },
       ),
     ),
     { concurrency: "unbounded" },
@@ -502,7 +505,7 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
                   round,
                   maxRounds,
                 }),
-                { maxOutputTokens: 1024, round },
+                { maxOutputTokens: 1024, round, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, round) : undefined },
               ),
             ),
             { concurrency: "unbounded" },
@@ -591,7 +594,7 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
               task,
               globalRound,
             }),
-            { maxOutputTokens: 512, round: 2, isGlobal: true },
+            { maxOutputTokens: 512, round: 2, isGlobal: true, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, globalRound) : undefined },
           ).pipe(Effect.map((r) => ({ ...r, teamName })))
         }),
         { concurrency: "unbounded" },
