@@ -5,30 +5,72 @@ on:
 
 jobs:
   build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+            arch: x64
+            ext: tar.gz
+          - os: macos-latest
+            target: darwin
+            arch: arm64
+            ext: tar.gz
+          - os: windows-latest
+            target: win32
+            arch: x64
+            ext: zip
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+
+      - name: Build
+        run: |
+          bun run packages/opencode/script/build.ts --single --skip-install --skip-embed-web-ui
+        env:
+          CONCLAVE_CHANNEL: stable
+        shell: bash
+
+      - name: Package
+        run: |
+          BIN=$(find packages/opencode/dist -name "conclave" -type f | head -1)
+          NAME="conclave-${{ matrix.target }}-${{ matrix.arch }}"
+          if [ "${{ matrix.target }}" = "win32" ]; then
+            cp "$BIN" "$NAME.exe"
+            7z a "$NAME.${{ matrix.ext }}" "$NAME.exe"
+          else
+            cp "$BIN" "$NAME"
+            chmod +x "$NAME"
+            tar -czf "$NAME.${{ matrix.ext }}" "$NAME"
+          fi
+          echo "artifact=$NAME.${{ matrix.ext }}" >> $GITHUB_ENV
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: conclave-${{ matrix.target }}-${{ matrix.arch }}
+          path: ${{ env.artifact }}
+
+  release:
+    needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v1
+      - uses: actions/download-artifact@v4
         with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-
-      - name: Build Linux x64
-        run: bun run packages/opencode/script/build.ts --single
-        env:
-          CONCLAVE_CHANNEL: stable
-
-      - name: Package
-        run: |
-          mkdir -p dist
-          cp packages/opencode/dist/conclave-linux-x64/bin/conclave dist/
-          cd dist && tar -czf ../conclave-linux-x64.tar.gz conclave
-
+          pattern: conclave-*
+          merge-multiple: true
+          path: dist
       - name: Create Release
         run: |
           VERSION="v$(date +%Y.%m.%d)"
@@ -37,6 +79,6 @@ jobs:
             --generate-notes \
             --target main \
             --latest \
-            conclave-linux-x64.tar.gz
+            dist/*
         env:
           GH_TOKEN: ${{ github.token }}
