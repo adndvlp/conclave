@@ -23,7 +23,19 @@ ARCH=$(uname -m)
 case "$OS" in
   darwin) OS="darwin" ;;
   linux) OS="linux" ;;
-  *) echo -e "${RED}Unsupported OS: $OS${NC}"; exit 1 ;;
+  mingw*|msys*|cygwin*) OS="windows" ;;
+  *)
+    # Windows via WSL or native git bash reports MINGW64
+    if echo "$OS" | grep -qi "mingw\|msys\|cygwin"; then
+      OS="windows"
+    elif [ -n "$WINDIR" ] || [ -n "$WINDIR" ]; then
+      OS="windows"
+    else
+      echo -e "${RED}Unsupported OS: $OS${NC}"
+      echo -e "${DIM}Windows users: use WSL (wsl --install) or Git Bash${NC}"
+      exit 1
+    fi
+    ;;
 esac
 
 case "$ARCH" in
@@ -34,10 +46,18 @@ esac
 
 TARGET="$OS-$ARCH"
 INSTALL_DIR="${HOME}/.conclave"
-BIN_DIR="${HOME}/.local/bin"
-BIN="$BIN_DIR/conclave"
+
+# Pick best bin directory: prefer one already in PATH
+BIN_DIR=""
+for dir in "/usr/local/bin" "$HOME/.local/bin" "$HOME/bin"; do
+  if [ -d "$dir" ] && [ -w "$dir" ] && echo "$PATH" | grep -q "$dir"; then
+    BIN_DIR="$dir"; break
+  fi
+done
+[ -z "$BIN_DIR" ] && BIN_DIR="${HOME}/.local/bin"
 
 mkdir -p "$INSTALL_DIR" "$BIN_DIR"
+BIN="$BIN_DIR/conclave"
 
 # Get latest release
 echo -e "${DIM}Fetching latest release...${NC}"
@@ -45,19 +65,33 @@ RELEASE=$(curl -sL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/n
 TAG=$(echo "$RELEASE" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": "\(.*\)".*/\1/')
 
 if [ -n "$TAG" ]; then
+  # Windows uses .zip, others use .tar.gz
+  if [ "$OS" = "windows" ]; then
+    EXTS=".zip .zip .zip"
+  else
+    EXTS=".tar.gz .tar.gz .tar.gz"
+  fi
+
   # Try exact match first, then fallback patterns
-  for pattern in "conclave-${TARGET}.tar.gz" "conclave-${TARGET}-baseline.tar.gz" "conclave-$(echo $OS | sed 's/darwin/darwin/;s/linux/linux/')-${ARCH}.tar.gz"; do
+  for pattern in "conclave-${TARGET}${EXTS%% *}" "conclave-${TARGET}-baseline${EXTS%% *}" "conclave-windows-${ARCH}.zip"; do
     URL=$(echo "$RELEASE" | grep '"browser_download_url"' | grep "$pattern" | head -1 | sed 's/.*"browser_download_url": "\(.*\)".*/\1/')
     [ -n "$URL" ] && break
   done
 
   if [ -n "$URL" ]; then
     echo -e "${DIM}Downloading Conclave ${TARGET}...${NC}"
-    curl -sL "$URL" -o "$INSTALL_DIR/conclave.tar.gz"
-    tar -xzf "$INSTALL_DIR/conclave.tar.gz" -C "$INSTALL_DIR"
-    cp "$INSTALL_DIR/conclave" "$BIN"
-    chmod +x "$BIN"
-    rm -f "$INSTALL_DIR/conclave.tar.gz" "$INSTALL_DIR/conclave"
+    if echo "$URL" | grep -q '\.zip$'; then
+      curl -sL "$URL" -o "$INSTALL_DIR/conclave.zip"
+      unzip -qo "$INSTALL_DIR/conclave.zip" -d "$INSTALL_DIR"
+      rm -f "$INSTALL_DIR/conclave.zip"
+    else
+      curl -sL "$URL" -o "$INSTALL_DIR/conclave.tar.gz"
+      tar -xzf "$INSTALL_DIR/conclave.tar.gz" -C "$INSTALL_DIR"
+      rm -f "$INSTALL_DIR/conclave.tar.gz"
+    fi
+    cp "$INSTALL_DIR/conclave" "$BIN" 2>/dev/null || cp "$INSTALL_DIR/conclave.exe" "$BIN.exe" 2>/dev/null
+    chmod +x "$BIN" 2>/dev/null || true
+    chmod +x "$BIN.exe" 2>/dev/null || true
     echo -e "${GOLD}✓ Conclave $TAG installed${NC}"
   fi
 fi
@@ -86,13 +120,16 @@ WRAPPER
   echo -e "${GOLD}✓ Conclave installed from source${NC}"
 fi
 
-# Add to PATH
+# Add to PATH for this session (immediate use)
+export PATH="$BIN_DIR:$PATH"
+
+# Add to shell config (future sessions)
 case $(basename "$SHELL") in
   fish)
     grep -q "$BIN_DIR" "$HOME/.config/fish/config.fish" 2>/dev/null || echo "fish_add_path $BIN_DIR" >> "$HOME/.config/fish/config.fish"
     ;;
   zsh)
-    grep -q "$BIN_DIR" "${HOME}/.zshrc" 2>/dev/null || echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "${HOME}/.zshrc"
+    grep -q "$BIN_DIR" "${ZDOTDIR:-$HOME}/.zshrc" 2>/dev/null || echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "${ZDOTDIR:-$HOME}/.zshrc"
     ;;
   *)
     grep -q "$BIN_DIR" "${HOME}/.bashrc" 2>/dev/null || echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "${HOME}/.bashrc"
@@ -102,5 +139,11 @@ esac
 echo ""
 echo -e "  Run: ${GOLD}conclave${NC}"
 echo ""
-echo -e "  ${DIM}Make sure ${BIN_DIR} is in your PATH. Restart your terminal or run:${NC}"
-echo -e "  ${GOLD}export PATH=\"$BIN_DIR:\$PATH\"${NC}"
+
+# If conclave is already in PATH from this session
+if command -v conclave &>/dev/null; then
+  echo -e "  ${DIM}Ready to go. Just type:${NC} ${GOLD}conclave${NC}"
+else
+  echo -e "  ${DIM}Run this or restart your terminal:${NC}"
+  echo -e "  ${GOLD}export PATH=\"$BIN_DIR:\$PATH\"${NC}"
+fi
