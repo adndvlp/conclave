@@ -8,7 +8,6 @@ on:
       - 'packages/core/**'
   pull_request:
     branches: [main]
-  workflow_dispatch:
 
 jobs:
   typecheck:
@@ -21,59 +20,3 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run --cwd packages/opencode typecheck
-
-  deploy-landing:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-      - uses: dorny/paths-filter@v3
-        id: changes
-        with:
-          filters: |
-            landing:
-              - 'landing/**'
-      - if: steps.changes.outputs.landing == 'true'
-        run: cd landing && bun install && bun run build
-      - if: steps.changes.outputs.landing == 'true'
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: landing/dist
-      - if: steps.changes.outputs.landing == 'true'
-        id: deploy
-        uses: actions/deploy-pages@v4
-
-  release:
-    if: github.event_name == 'workflow_dispatch'
-    needs: typecheck
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Create Release
-        run: |
-          gh release create "v$(date +%Y.%m.%d)" \
-            --title "v$(date +%Y.%m.%d)" \
-            --generate-notes \
-            --target main \
-            --latest
-        env:
-          GH_TOKEN: ${{ github.token }}
