@@ -1,14 +1,26 @@
 import { Effect } from "effect"
-import { generateText } from "ai"
+import { streamText } from "ai"
 import type { LanguageModelV3 } from "@ai-sdk/provider"
+import type { ModelMessage } from "ai"
 import type { Provider } from "@/provider/provider"
 import { buildDeliberationPrompt, buildSubTeamPrompt, buildGlobalRoundPrompt } from "./prompts"
 import type { SubTeam, CrossTeamMessage } from "./schema"
+import { callGemini, callClaude, callCodex, type CliType } from "./cli-adapter"
 
-export type Participant = {
+export type ApiParticipant = {
+  kind: "api"
   model: Provider.Model
   language: LanguageModelV3
 }
+
+export type CliParticipant = {
+  kind: "cli"
+  model: Provider.Model
+  cli: CliType
+  bin: string
+}
+
+export type Participant = ApiParticipant | CliParticipant
 
 export type RoundSignal = {
   model: string
@@ -119,6 +131,59 @@ function lastNLines(text: string, n = 8): string {
   return text.trim().split("\n").slice(-n).join("\n")
 }
 
+// ─── callParticipant ─────────────────────────────────────────────────────────
+
+function callParticipant(
+  p: Participant,
+  messages: ModelMessage[],
+  opts: {
+    maxOutputTokens: number
+    round: number
+    isGlobal?: boolean
+    onChunk?: (name: string, accumulated: string) => void
+  },
+): Effect.Effect<{ participant: Participant; text: string; signal: Signal | null }> {
+  return Effect.callback<{ participant: Participant; text: string; signal: Signal | null }>((resume) => {
+    ;(async () => {
+      try {
+        let accumulated = ""
+        const onChunk = (text: string) => opts.onChunk?.(p.model.name, text)
+
+        if (p.kind === "cli") {
+          if (p.cli === "gemini") {
+            accumulated = await callGemini(p.bin, messages, p.model.id, onChunk)
+          } else if (p.cli === "codex") {
+            accumulated = await callCodex(p.bin, messages, p.model.id, onChunk)
+          } else {
+            accumulated = await callClaude(p.bin, messages, p.model.id, onChunk)
+          }
+        } else {
+          const result = streamText({
+            model: (p as ApiParticipant).language as any,
+            messages: messages as any,
+            maxOutputTokens: opts.maxOutputTokens,
+            temperature: 0.2,
+          })
+          for await (const chunk of result.textStream) {
+            accumulated += chunk
+            onChunk(accumulated)
+          }
+        }
+
+        resume(
+          Effect.succeed({
+            participant: p,
+            text: accumulated,
+            signal: parseSignal(accumulated, opts.round, opts.isGlobal ?? false),
+          }),
+        )
+      } catch {
+        resume(Effect.succeed({ participant: p, text: "", signal: null }))
+      }
+    })()
+  })
+}
+
 // ─── Core debate ─────────────────────────────────────────────────────────────
 
 export const runDebate = Effect.fn("Team.runDebate")(function* (
@@ -145,31 +210,17 @@ export const runDebate = Effect.fn("Team.runDebate")(function* (
 
     const roundResults = yield* Effect.all(
       participants.map((p) =>
-        Effect.promise(() =>
-          generateText({
-            model: p.language as any,
-            messages: buildDeliberationPrompt({
-              self: p.model,
-              teammates: participants.filter((x) => x.model.id !== p.model.id).map((x) => x.model),
-              task,
-              thread,
-              round,
-              maxRounds: dynamicMax,
-            }) as any,
-            maxOutputTokens: 1024,
-            temperature: 0.2,
+        callParticipant(
+          p,
+          buildDeliberationPrompt({
+            self: p.model,
+            teammates: participants.filter((x) => x.model.id !== p.model.id).map((x) => x.model),
+            task,
+            thread,
+            round,
+            maxRounds: dynamicMax,
           }),
-        ).pipe(
-          Effect.map((result: any) => ({
-            participant: p,
-            text: result.text,
-            signal: parseSignal(result.text, round),
-          })),
-          Effect.orElseSucceed(() => ({
-            participant: p,
-            text: "",
-            signal: null as Signal | null,
-          })),
+          { maxOutputTokens: 1024, round },
         ),
       ),
       { concurrency: "unbounded" },
@@ -340,28 +391,18 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
   // ── Phase 0: decision round ─────────────────────────────────────────────
   const phase0Results = yield* Effect.all(
     participants.map((p) =>
-      Effect.promise(() =>
-        generateText({
-          model: p.language as any,
-          messages: buildDeliberationPrompt({
-            self: p.model,
-            teammates: participants.filter((x) => x.model.id !== p.model.id).map((x) => x.model),
-            task,
-            thread: "",
-            round: 1,
-            maxRounds: 1,
-            allowBreak: true,
-          }) as any,
-          maxOutputTokens: 512,
-          temperature: 0.2,
+      callParticipant(
+        p,
+        buildDeliberationPrompt({
+          self: p.model,
+          teammates: participants.filter((x) => x.model.id !== p.model.id).map((x) => x.model),
+          task,
+          thread: "",
+          round: 1,
+          maxRounds: 1,
+          allowBreak: true,
         }),
-      ).pipe(
-        Effect.map((r: any) => ({
-          participant: p,
-          text: r.text,
-          signal: parseSignal(r.text, 1),
-        })),
-        Effect.orElseSucceed(() => ({ participant: p, text: "", signal: null as Signal | null })),
+        { maxOutputTokens: 512, round: 1 },
       ),
     ),
     { concurrency: "unbounded" },
@@ -448,30 +489,20 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
 
           const roundResults = yield* Effect.all(
             members.map((p) =>
-              Effect.promise(() =>
-                generateText({
-                  model: p.language as any,
-                  messages: buildSubTeamPrompt({
-                    self: p.model,
-                    teammates: members.filter((m) => m.model.id !== p.model.id).map((m) => m.model),
-                    teamName: st.name,
-                    focus: st.focus,
-                    task,
-                    thread: state.thread,
-                    crossTeamMessages: state.crossTeamMessages,
-                    round,
-                    maxRounds,
-                  }) as any,
-                  maxOutputTokens: 1024,
-                  temperature: 0.2,
+              callParticipant(
+                p,
+                buildSubTeamPrompt({
+                  self: p.model,
+                  teammates: members.filter((m) => m.model.id !== p.model.id).map((m) => m.model),
+                  teamName: st.name,
+                  focus: st.focus,
+                  task,
+                  thread: state.thread,
+                  crossTeamMessages: state.crossTeamMessages,
+                  round,
+                  maxRounds,
                 }),
-              ).pipe(
-                Effect.map((r) => ({
-                  participant: p,
-                  text: r.text,
-                  signal: parseSignal(r.text, round),
-                })),
-                Effect.orElseSucceed(() => ({ participant: p, text: "", signal: null as Signal | null })),
+                { maxOutputTokens: 1024, round },
               ),
             ),
             { concurrency: "unbounded" },
@@ -549,34 +580,19 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
               summary: lastNLines(subTeamState.get(st.id)!.thread),
             }))
 
-          return Effect.promise(() =>
-            generateText({
-              model: p.language as any,
-              messages: buildGlobalRoundPrompt({
-                self: p.model,
-                myTeamName: myTeam?.name ?? "sin equipo",
-                myTeamSummary: lastNLines(myState?.thread ?? ""),
-                otherTeamsSummaries: otherTeams,
-                task,
-                globalRound,
-              }) as any,
-              maxOutputTokens: 512,
-              temperature: 0.2,
+          const teamName = myTeam?.name ?? "sin equipo"
+          return callParticipant(
+            p,
+            buildGlobalRoundPrompt({
+              self: p.model,
+              myTeamName: teamName,
+              myTeamSummary: lastNLines(myState?.thread ?? ""),
+              otherTeamsSummaries: otherTeams,
+              task,
+              globalRound,
             }),
-          ).pipe(
-            Effect.map((r) => ({
-              participant: p,
-              text: r.text,
-              signal: parseSignal(r.text, 2, true),
-              teamName: myTeam?.name ?? "sin equipo",
-            })),
-            Effect.orElseSucceed(() => ({
-              participant: p,
-              text: "",
-              signal: null as Signal | null,
-              teamName: myTeam?.name ?? "sin equipo",
-            })),
-          )
+            { maxOutputTokens: 512, round: 2, isGlobal: true },
+          ).pipe(Effect.map((r) => ({ ...r, teamName })))
         }),
         { concurrency: "unbounded" },
       )

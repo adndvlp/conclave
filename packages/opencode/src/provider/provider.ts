@@ -1399,6 +1399,106 @@ const layer: Layer.Layer<
           log.info("found", { providerID })
         }
 
+        // Auto-detect installed AI CLIs and register as synthetic providers
+        yield* Effect.promise(async () => {
+          const { exec } = await import("child_process")
+          const which = (bin: string) =>
+            new Promise<string | null>((res) => {
+              exec(`which ${bin}`, (err, stdout) => res(err ? null : stdout.trim() || null))
+            })
+
+          function cliModel(providerID: ProviderID, id: string, name: string, family: string, context: number): Model {
+            return {
+              id: ModelID.make(id),
+              providerID,
+              name,
+              family,
+              api: { id, url: "", npm: "" },
+              status: "active",
+              headers: {},
+              options: {},
+              cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+              limit: { context, output: 8192 },
+              capabilities: {
+                temperature: false,
+                reasoning: false,
+                attachment: false,
+                toolcall: false,
+                input: { text: true, audio: false, image: false, video: false, pdf: false },
+                output: { text: true, audio: false, image: false, video: false, pdf: false },
+                interleaved: false,
+              },
+              release_date: "",
+              variants: {},
+            }
+          }
+
+          const [geminiPath, claudePath, codexPath] = await Promise.all([
+            which("gemini"),
+            which("claude"),
+            which("codex"),
+          ])
+
+          if (geminiPath) {
+            const id = ProviderID.make("cli-gemini")
+            providers[id] = {
+              id,
+              name: "Gemini CLI",
+              source: "env",
+              env: [],
+              options: { bin: geminiPath },
+              models: {
+                "gemini-3.1-pro-preview":    cliModel(id, "gemini-3.1-pro-preview",    "Gemini 3.1 Pro Preview",     "gemini", 2000),
+                "gemini-3-flash-preview":    cliModel(id, "gemini-3-flash-preview",    "Gemini 3 Flash Preview",     "gemini", 1000),
+                "gemini-3.1-flash-lite-preview": cliModel(id, "gemini-3.1-flash-lite-preview", "Gemini 3.1 Flash Lite Preview", "gemini", 1000),
+                "gemini-2.5-pro":            cliModel(id, "gemini-2.5-pro",            "Gemini 2.5 Pro",             "gemini", 1000),
+                "gemini-2.5-flash":          cliModel(id, "gemini-2.5-flash",          "Gemini 2.5 Flash",           "gemini", 1000),
+                "gemini-2.5-flash-lite":     cliModel(id, "gemini-2.5-flash-lite",     "Gemini 2.5 Flash Lite",      "gemini", 1000),
+              },
+            }
+            log.info("found", { providerID: id })
+          }
+
+          if (claudePath) {
+            const id = ProviderID.make("cli-claude")
+            // Model ID encodes effort level as suffix: "claude-opus-4-7-max" → --effort max
+            // No suffix = auto (model decides based on prompt complexity)
+            providers[id] = {
+              id,
+              name: "Claude Code CLI",
+              source: "env",
+              env: [],
+              options: { bin: claudePath },
+              models: {
+                "claude-opus-4-7":        cliModel(id, "claude-opus-4-7",        "Claude Opus 4.7 (auto)",         "claude", 200),
+                "claude-opus-4-7-max":    cliModel(id, "claude-opus-4-7-max",    "Claude Opus 4.7 (max thinking)", "claude", 200),
+                "claude-sonnet-4-6":      cliModel(id, "claude-sonnet-4-6",      "Claude Sonnet 4.6 (auto)",       "claude", 200),
+                "claude-sonnet-4-6-max":  cliModel(id, "claude-sonnet-4-6-max",  "Claude Sonnet 4.6 (max thinking)","claude", 200),
+                "claude-haiku-4-5":       cliModel(id, "claude-haiku-4-5",       "Claude Haiku 4.5 (auto)",        "claude", 200),
+                "claude-haiku-4-5-max":   cliModel(id, "claude-haiku-4-5-max",   "Claude Haiku 4.5 (max thinking)","claude", 200),
+              },
+            }
+            log.info("found", { providerID: id })
+          }
+
+          if (codexPath) {
+            const id = ProviderID.make("cli-codex")
+            providers[id] = {
+              id,
+              name: "Codex CLI",
+              source: "env",
+              env: ["CODEX_API_KEY", "OPENAI_API_KEY"],
+              options: { bin: codexPath },
+              models: {
+                "codex-1":  cliModel(id, "codex-1",  "Codex 1",       "codex", 128),
+                "o4-mini":  cliModel(id, "o4-mini",  "o4 Mini",       "codex", 128),
+                "o3":       cliModel(id, "o3",       "o3",            "codex", 200),
+              },
+            }
+            log.info("found", { providerID: id })
+          }
+        })
+
         return {
           models: languages,
           providers,

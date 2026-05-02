@@ -3,6 +3,7 @@ import * as Log from "@opencode-ai/core/util/log"
 import { Provider } from "@/provider/provider"
 import { SessionStatus } from "@/session/status"
 import { runBreakingTeams, type Participant, type RoundSignal } from "./debate"
+import { CLI_PROVIDER_IDS, cliSyntheticModel, detectCli } from "./cli-adapter"
 import type { LLM } from "@/session/llm"
 import type { ModelMessage } from "ai"
 
@@ -51,6 +52,25 @@ export const layer = Layer.effect(
         const resolved = yield* Effect.all(
           members.map(({ providerID, modelID }) =>
             Effect.gen(function* () {
+              // CLI participant — resolve via subprocess detection, no SDK needed
+              if (CLI_PROVIDER_IDS.has(providerID)) {
+                const cliMap: Record<string, { cli: "gemini" | "claude-code" | "codex"; bin: string; label: string }> = {
+                  "cli-gemini":  { cli: "gemini",     bin: "gemini", label: "Gemini" },
+                  "cli-claude":  { cli: "claude-code", bin: "claude", label: "Claude Code" },
+                  "cli-codex":   { cli: "codex",      bin: "codex",  label: "Codex" },
+                }
+                const entry = cliMap[providerID]
+                if (!entry) return Option.none<Participant>()
+                const bin = yield* Effect.promise(() => detectCli(entry.bin))
+                if (!bin) {
+                  log.warn("team.cli.not_found", { providerID, bin: entry.bin })
+                  return Option.none<Participant>()
+                }
+                const model = cliSyntheticModel(providerID, modelID, `${entry.label} (${modelID})`)
+                return Option.some<Participant>({ kind: "cli", model, cli: entry.cli, bin })
+              }
+
+              // API participant
               const model = yield* provider.getModel(providerID, modelID).pipe(Effect.option)
               if (Option.isNone(model)) {
                 log.warn("team.member.not_found", { providerID, modelID })
@@ -61,7 +81,7 @@ export const layer = Layer.effect(
                 log.warn("team.member.no_language", { providerID, modelID })
                 return Option.none<Participant>()
               }
-              return Option.some<Participant>({ model: model.value, language: language.value })
+              return Option.some<Participant>({ kind: "api", model: model.value, language: language.value })
             }),
           ),
           { concurrency: "unbounded" },
