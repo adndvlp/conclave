@@ -29,9 +29,9 @@ jobs:
           for dir in packages/opencode/dist/opencode-*/; do
             name=$(basename "$dir" | sed 's/^opencode/conclave/')
             if echo "$name" | grep -q 'windows\|win32'; then
-              (cd "$dir/bin" && zip -r "../../../../release/$name.zip" *)
+              (cd "$dir/bin" && zip -r "${GITHUB_WORKSPACE}/release/$name.zip" *)
             else
-              (cd "$dir/bin" && tar -czf "../../../../release/$name.tar.gz" *)
+              (cd "$dir/bin" && tar -czf "${GITHUB_WORKSPACE}/release/$name.tar.gz" *)
             fi
           done
           ls -la release/
