@@ -5,67 +5,24 @@ on:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            name: linux-x64
-          - os: macos-latest
-            name: darwin-arm64
-          - os: windows-latest
-            name: windows-x64
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-
-      - name: Build
-        run: bun run packages/opencode/script/build.ts --single --skip-install --skip-embed-web-ui
-        env:
-          CONCLAVE_CHANNEL: stable
-        shell: bash
-
-      - name: Package
-        run: |
-          BIN=$(find . packages/opencode/dist -name "conclave" -type f 2>/dev/null | head -1)
-          if [ -z "$BIN" ]; then BIN=./conclave; fi
-          NAME="conclave-${{ matrix.name }}"
-          if echo "${{ matrix.name }}" | grep -q windows; then
-            cp "$BIN" "$NAME.exe"
-            7z a "$NAME.zip" "$NAME.exe"
-            echo "artifact=$NAME.zip" >> $GITHUB_ENV
-          else
-            cp "$BIN" "$NAME"
-            chmod +x "$NAME"
-            tar -czf "$NAME.tar.gz" "$NAME"
-            echo "artifact=$NAME.tar.gz" >> $GITHUB_ENV
-          fi
-        shell: bash
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: conclave-${{ matrix.name }}
-          path: ${{ env.artifact }}
-
-  release:
-    needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: oven-sh/setup-bun@v1
         with:
-          pattern: conclave-*
-          merge-multiple: true
-          path: dist
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+
+      - name: Build all platforms
+        run: bun run packages/opencode/script/build.ts --skip-embed-web-ui
+        env:
+          CONCLAVE_CHANNEL: stable
+
       - name: Create Release
         run: |
           VERSION="v$(date +%Y.%m.%d)"
@@ -74,6 +31,7 @@ jobs:
             --generate-notes \
             --target main \
             --latest \
-            dist/*
+            packages/opencode/dist/*.tar.gz \
+            packages/opencode/dist/*.zip
         env:
           GH_TOKEN: ${{ github.token }}
