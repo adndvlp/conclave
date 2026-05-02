@@ -23,6 +23,20 @@ jobs:
         env:
           CONCLAVE_CHANNEL: stable
 
+      - name: Package binaries
+        run: |
+          mkdir -p release
+          for dir in packages/opencode/dist/opencode-*/; do
+            name=$(basename "$dir" | sed 's/^opencode/conclave/')
+            if echo "$name" | grep -q 'windows\|win32'; then
+              (cd "$dir/bin" && zip -r "../../../../release/$name.zip" *)
+            else
+              (cd "$dir/bin" && tar -czf "../../../../release/$name.tar.gz" *)
+            fi
+          done
+          ls -la release/
+        shell: bash
+
       - name: Create Release
         run: |
           VERSION="v$(date +%Y.%m.%d)"
@@ -31,7 +45,6 @@ jobs:
             --generate-notes \
             --target main \
             --latest \
-            packages/opencode/dist/*.tar.gz \
-            packages/opencode/dist/*.zip
+            release/*
         env:
           GH_TOKEN: ${{ github.token }}
