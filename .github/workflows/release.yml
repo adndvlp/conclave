@@ -42,19 +42,28 @@ jobs:
 
       - name: Build
         run: |
-          if [ "${{ matrix.name }}" = "$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')" ]; then
-            # Native build — use build script
-            bun run packages/opencode/script/build.ts --single --skip-install --skip-embed-web-ui
-          else
-            # Cross-compile via direct bun build
-            bun build packages/opencode/src/index.ts \
-              --compile \
-              --target=${{ matrix.target }} \
-              --outfile=conclave \
-              --conditions=browser \
-              --minify \
-              --external=node-gyp
-          fi
+          # Native build — use build script
+          bun run packages/opencode/script/build.ts --single --skip-install --skip-embed-web-ui
+        if: ${{ !contains(matrix.name, 'linux-arm64') && !contains(matrix.name, 'darwin-x64') }}
+        env:
+          CONCLAVE_CHANNEL: stable
+        shell: bash
+
+      - name: Build (cross-compile)
+        run: |
+          # Install target platform packages
+          bun install --os="*" --cpu="*" @opentui/core
+          bun install --os="*" --cpu="*" @parcel/watcher
+          # Cross-compile via bun --target
+          bun build packages/opencode/src/index.ts \
+            --compile \
+            --target=${{ matrix.target }} \
+            --outfile=conclave \
+            --conditions=browser \
+            --minify \
+            --external=node-gyp \
+            --tsconfig-override packages/opencode/tsconfig.json
+        if: ${{ contains(matrix.name, 'linux-arm64') || contains(matrix.name, 'darwin-x64') }}
         env:
           CONCLAVE_CHANNEL: stable
         shell: bash

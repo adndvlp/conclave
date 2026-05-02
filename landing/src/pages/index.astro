@@ -26,7 +26,8 @@
       font-family:'Inter',-apple-system,sans-serif;
       background:#06060a;
       color:#e8e2e2;
-      line-height:1.6;
+      line-height:1.65;
+      font-size:16px;
       -webkit-font-smoothing:antialiased;
       overflow-x:hidden;
     }
@@ -77,9 +78,9 @@
 
     .hero-badge {
       display:inline-flex; align-items:center; gap:8px;
-      padding:0.4rem 1.2rem; border-radius:100px;
+      padding:0.5rem 1.4rem; border-radius:100px;
       background:rgba(220,38,38,0.08); border:1px solid rgba(220,38,38,0.2);
-      font-size:0.75rem; color:#e08080; font-weight:500;
+      font-size:0.8rem; color:#e08080; font-weight:500;
       width:fit-content; margin-bottom:2rem;
       animation:in 0.8s ease 0.2s both;
     }
@@ -97,8 +98,8 @@
     }
 
     .hero-desc {
-      font-size:1.1rem; color:#908890; max-width:520px;
-      line-height:1.65; margin-bottom:2.5rem;
+      font-size:1.2rem; color:#908890; max-width:540px;
+      line-height:1.7; margin-bottom:2.5rem;
       animation:in 0.8s ease 0.4s both;
     }
 
@@ -109,8 +110,8 @@
 
     .btn {
       display:inline-flex; align-items:center; gap:8px;
-      padding:0.8rem 1.8rem; border-radius:100px;
-      font-weight:600; font-size:0.9rem; text-decoration:none;
+      padding:0.9rem 2rem; border-radius:100px;
+      font-weight:600; font-size:0.95rem; text-decoration:none;
       transition:all 0.3s; cursor:pointer; border:1px solid transparent;
     }
     .btn-primary {
@@ -128,17 +129,17 @@
     .install-box {
       display:inline-flex; align-items:center; gap:10px;
       background:rgba(20,20,30,0.6); border:1px solid rgba(255,255,255,0.06);
-      border-radius:100px; padding:0.5rem 0.5rem 0.5rem 1.3rem;
-      font-family:'JetBrains Mono',monospace; font-size:0.78rem;
+      border-radius:100px; padding:0.6rem 0.6rem 0.6rem 1.5rem;
+      font-family:'JetBrains Mono',monospace; font-size:0.82rem;
       cursor:pointer; transition:all 0.3s;
     }
     .install-box:hover { border-color:rgba(220,38,38,0.3); }
     .install-box .prompt { color:#b8860b; }
     .install-box .cmd { color:#c0c0d0; }
     .install-box .copy-btn {
-      background:#a21212; color:#fff; border:none; padding:0.4rem 1rem;
+      background:#a21212; color:#fff; border:none; padding:0.5rem 1.2rem;
       border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;
-      font-size:0.7rem; font-weight:600; transition:background 0.2s;
+      font-size:0.75rem; font-weight:600; transition:background 0.2s;
     }
     .install-box .copy-btn:hover { background:#c41e3a }
 
@@ -169,22 +170,22 @@
     .flow-step {
       background:rgba(20,20,30,0.5); backdrop-filter:blur(10px);
       border:1px solid rgba(255,255,255,0.05); border-radius:20px;
-      padding:1.5rem 2rem; text-align:center; transition:all 0.3s;
-      min-width:140px; z-index:1;
+      padding:1.8rem 2.4rem; text-align:center; transition:all 0.3s;
+      min-width:150px; z-index:1;
     }
     .flow-step:hover { border-color:rgba(220,38,38,0.3); transform:translateY(-4px); }
-    .flow-step i { font-size:1.3rem; color:#c06060; margin-bottom:0.4rem; }
-    .flow-step .label { font-weight:600; font-size:0.85rem; }
-    .flow-step .sub { font-size:0.7rem; color:#686880; margin-top:0.1rem; }
-    .flow-arrow { color:#b8860b; font-size:1.1rem; margin:0 -0.2rem; z-index:2; }
+    .flow-step i { font-size:1.5rem; color:#c06060; margin-bottom:0.5rem; }
+    .flow-step .label { font-weight:600; font-size:0.9rem; }
+    .flow-step .sub { font-size:0.75rem; color:#686880; margin-top:0.15rem; }
+    .flow-arrow { color:#b8860b; font-size:1.3rem; margin:0 -0.2rem; z-index:2; }
 
     /* ── TUI Mock ── */
     .tui-mock {
       background:rgba(12,14,20,0.8); backdrop-filter:blur(16px);
       border:1px solid rgba(255,255,255,0.06); border-radius:24px;
-      padding:1.5rem; max-width:520px; margin:2.5rem auto 0;
-      font-family:'JetBrains Mono',monospace; font-size:0.78rem;
-      line-height:1.8; color:#c0c0d8;
+      padding:1.8rem; max-width:560px; margin:2.5rem auto 0;
+      font-family:'JetBrains Mono',monospace; font-size:0.82rem;
+      line-height:1.9; color:#c0c0d8;
     }
     .tui-mock .red { color:#e06060 }
     .tui-mock .gold { color:#c9973b }
@@ -201,7 +202,7 @@
     .card {
       background:rgba(18,20,30,0.5); backdrop-filter:blur(14px);
       border:1px solid rgba(255,255,255,0.04); border-radius:24px;
-      padding:2rem; transition:all 0.35s; position:relative;
+      padding:2.2rem; transition:all 0.35s; position:relative;
       overflow:hidden;
     }
     .card::before {
@@ -216,26 +217,26 @@
     }
     .card:hover::before { opacity:1 }
     .card-icon {
-      width:48px; height:48px; border-radius:14px;
+      width:52px; height:52px; border-radius:14px;
       background:rgba(220,38,38,0.08);
       display:flex; align-items:center; justify-content:center;
-      margin-bottom:1.2rem; font-size:1.2rem; color:#c06060;
+      margin-bottom:1.3rem; font-size:1.3rem; color:#c06060;
       border:1px solid rgba(255,255,255,0.03);
       transition:all 0.3s;
     }
     .card:hover .card-icon { background:rgba(220,38,38,0.15); transform:scale(1.05) }
-    .card h3 { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:1.1rem; margin-bottom:0.5rem; letter-spacing:-0.01em }
-    .card p { color:#888; font-size:0.9rem; line-height:1.55 }
+    .card h3 { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:1.15rem; margin-bottom:0.6rem; letter-spacing:-0.01em }
+    .card p { color:#888; font-size:0.95rem; line-height:1.6 }
 
     /* ── Stats ── */
     .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:2rem; text-align:center }
     .stat-num {
-      font-family:'Space Grotesk',sans-serif; font-size:2.8rem; font-weight:700;
+      font-family:'Space Grotesk',sans-serif; font-size:3.2rem; font-weight:700;
       background:linear-gradient(135deg, #dc2626, #b8860b);
       -webkit-background-clip:text; background-clip:text; color:transparent;
-      line-height:1; margin-bottom:0.3rem;
+      line-height:1; margin-bottom:0.4rem;
     }
-    .stat-label { font-size:0.7rem; color:#686880; text-transform:uppercase; letter-spacing:2px; font-weight:500 }
+    .stat-label { font-size:0.75rem; color:#686880; text-transform:uppercase; letter-spacing:2px; font-weight:500 }
 
     /* ── Footer ── */
     footer {
