@@ -4,21 +4,39 @@ on:
   workflow_dispatch:
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+
+      - name: Build Linux x64
+        run: bun run packages/opencode/script/build.ts --single
+        env:
+          CONCLAVE_CHANNEL: stable
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp packages/opencode/dist/conclave-linux-x64/bin/conclave dist/
+          cd dist && tar -czf ../conclave-linux-x64.tar.gz conclave
+
       - name: Create Release
         run: |
-          gh release create "v$(date +%Y.%m.%d)" \
-            --title "v$(date +%Y.%m.%d)" \
+          VERSION="v$(date +%Y.%m.%d)"
+          gh release create "$VERSION" \
+            --title "$VERSION" \
             --generate-notes \
             --target main \
-            --latest
+            --latest \
+            conclave-linux-x64.tar.gz
         env:
           GH_TOKEN: ${{ github.token }}
