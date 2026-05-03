@@ -103,6 +103,9 @@ function partState(part: PartType, showReasoningSummaries: boolean) {
     if (showReasoningSummaries && part.text?.trim()) return "visible" as const
     return
   }
+  if (part.type === "team_round") {
+    return part.text?.trim() ? ("visible" as const) : undefined
+  }
   if (PART_MAPPING[part.type]) return "visible" as const
   return
 }

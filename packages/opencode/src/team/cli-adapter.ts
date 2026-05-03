@@ -148,7 +148,10 @@ export async function callClaude(
     "--verbose",
   ]
   if (system) args.push("--system-prompt", system)
-  if (modelId?.endsWith("-max")) args.push("--effort", "max")
+  const effortMatch = modelId?.match(/-([a-z]+)$/)
+  if (effortMatch && ["low", "medium", "high", "xhigh", "max"].includes(effortMatch[1])) {
+    args.push("--effort", effortMatch[1])
+  }
 
   const proc = spawn([bin, ...args], { stdout: "pipe", stderr: "ignore" })
 
@@ -187,6 +190,113 @@ export async function callClaude(
   return accumulated
 }
 
+// ─── Agent-mode CLI (implementation phase) ───────────────────────────────────
+// These variants run the CLI with full tool access (no debate restrictions).
+
+export async function callGeminiAgent(
+  bin: string,
+  messages: ModelMessage[],
+  modelId: string,
+  onChunk?: (accumulated: string) => void,
+): Promise<string> {
+  const { system, user } = buildCliPrompt(messages)
+  const fullPrompt = system ? `${system}\n\n${user}` : user
+
+  const proc = spawn(
+    [
+      bin,
+      "-p", fullPrompt,
+      "--output-format", "stream-json",
+      "--approval-mode", "auto",
+      "-m", modelId,
+    ],
+    {
+      stdout: "pipe",
+      stderr: "ignore",
+      env: { GEMINI_CLI_TRUST_WORKSPACE: "true" },
+    },
+  )
+
+  if (!proc.stdout) throw new Error("gemini: no stdout")
+
+  let accumulated = ""
+  let buf = ""
+
+  for await (const rawChunk of proc.stdout) {
+    buf += (rawChunk as Buffer).toString()
+    const lines = buf.split("\n")
+    buf = lines.pop() ?? ""
+    for (const line of lines) {
+      if (!line.trim()) continue
+      try {
+        const event = JSON.parse(line)
+        if (event.type === "message" && event.role === "assistant" && typeof event.content === "string") {
+          accumulated += event.content
+          onChunk?.(accumulated)
+        }
+      } catch {}
+    }
+  }
+
+  await proc.exited
+  return accumulated
+}
+
+export async function callClaudeAgent(
+  bin: string,
+  messages: ModelMessage[],
+  modelId?: string,
+  onChunk?: (accumulated: string) => void,
+): Promise<string> {
+  const { system, user } = buildCliPrompt(messages)
+
+  const args: string[] = [
+    "-p", user,
+    "--output-format", "stream-json",
+    "--verbose",
+  ]
+  if (system) args.push("--system-prompt", system)
+  const effortMatch = modelId?.match(/-([a-z]+)$/)
+  if (effortMatch && ["low", "medium", "high", "xhigh", "max"].includes(effortMatch[1])) {
+    args.push("--effort", effortMatch[1])
+  }
+
+  const proc = spawn([bin, ...args], { stdout: "pipe", stderr: "ignore" })
+
+  if (!proc.stdout) throw new Error("claude: no stdout")
+
+  let accumulated = ""
+  let buf = ""
+
+  for await (const rawChunk of proc.stdout) {
+    buf += (rawChunk as Buffer).toString()
+    const lines = buf.split("\n")
+    buf = lines.pop() ?? ""
+    for (const line of lines) {
+      if (!line.trim()) continue
+      try {
+        const event = JSON.parse(line)
+        if (event.type === "assistant" && Array.isArray(event.message?.content)) {
+          const text = (event.message.content as any[])
+            .filter((p) => p.type === "text")
+            .map((p) => p.text as string)
+            .join("")
+          if (text) {
+            accumulated += text
+            onChunk?.(accumulated)
+          }
+        } else if (event.type === "result" && typeof event.result === "string" && !accumulated) {
+          accumulated = event.result
+          onChunk?.(accumulated)
+        }
+      } catch {}
+    }
+  }
+
+  await proc.exited
+  return accumulated
+}
+
 // ─── Codex CLI ────────────────────────────────────────────────────────────────
 // codex exec "prompt" [--model id]  → plain text on stdout; progress on stderr
 
@@ -199,8 +309,14 @@ export async function callCodex(
   const { system, user } = buildCliPrompt(messages)
   const fullPrompt = system ? `${system}\n\n${user}` : user
 
-  const args: string[] = ["exec", fullPrompt]
-  if (modelId) args.push("--model", modelId)
+  const effortMatch = modelId?.match(/-([a-z]+)$/)
+  const validEfforts = ["low", "medium", "high", "xhigh"]
+  const effort = effortMatch && validEfforts.includes(effortMatch[1]) ? effortMatch[1] : null
+  const baseModel = effort ? modelId.replace(/-[a-z]+$/, "") : modelId
+
+  const args: string[] = []
+  if (effort) args.push("-c", `model_reasoning_effort=${effort}`)
+  args.push("exec", fullPrompt, "--model", baseModel)
 
   const proc = spawn([bin, ...args], { stdout: "pipe", stderr: "ignore" })
 

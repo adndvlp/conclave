@@ -287,7 +287,7 @@
     <section class="hero">
       <div class="hero-badge">STOP CHOOSING. MAKE THEM DEBATE.</div>
       <h1>Every week a new <span class="gradient-text">"best LLM"</span>. What if you didn't have to pick?</h1>
-      <p class="hero-desc">Conclave puts Claude, GPT, Gemini, and DeepSeek in the same room. They deliberate in real rounds — proposing, challenging, building on each other's ideas. <strong>The best idea wins.</strong></p>
+      <p class="hero-desc">Conclave puts Claude, GPT, Gemini, and DeepSeek in the same room. They deliberate in real rounds. The best idea wins. <strong>No API key? Use your existing Claude Code or Gemini CLI.</strong></p>
       <div class="hero-actions">
         <div class="install-box" onclick="copy()">
           <span class="prompt">$</span>
@@ -327,6 +327,38 @@
       </div>
     </section>
 
+    <!-- Fork leverage explainer -->
+    <section>
+      <div style="max-width:700px;margin:0 auto;text-align:center" class="reveal">
+        <div class="section-label">Built On</div>
+        <h2 class="section-title" style="font-size:1.6rem">Standing on <span style="color:#b8860b">OpenCode's</span> shoulders</h2>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:center;gap:2rem;flex-wrap:wrap;margin:2rem 0" class="reveal">
+        <div style="background:rgba(18,20,30,0.5);border:1px solid rgba(255,255,255,0.04);border-radius:20px;padding:1.5rem 2rem;text-align:center;max-width:280px">
+          <div style="font-size:1rem;color:#888;margin-bottom:0.3rem">OpenCode</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;color:#686880;line-height:1.6">
+            /connect<br>/models<br>/agents<br>git<br>tools<br>LSP<br>providers<br>TUI
+          </div>
+        </div>
+        <div style="font-size:2rem;color:#b8860b">+</div>
+        <div style="background:rgba(18,20,30,0.5);border:1px solid rgba(220,38,38,0.2);border-radius:20px;padding:1.2rem 1.5rem;text-align:center;max-width:220px">
+          <div style="font-size:1rem;color:#e06060;margin-bottom:0.3rem">Team Layer</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;color:#c06060;line-height:1.6">
+            /team<br>debate.ts<br>prompts.ts<br>team.ts<br>processor<br>signals
+          </div>
+        </div>
+        <div style="font-size:2rem;color:#b8860b">=</div>
+        <div style="background:rgba(18,20,30,0.5);border:1px solid rgba(184,134,11,0.3);border-radius:20px;padding:1.5rem 2rem;text-align:center;max-width:200px">
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:1.5rem;font-weight:700;background:linear-gradient(135deg,#dc2626,#b8860b);-webkit-background-clip:text;background-clip:text;color:transparent">Conclave</div>
+        </div>
+      </div>
+
+      <p class="reveal" style="text-align:center;color:#888;max-width:550px;margin:0 auto;font-size:0.95rem;line-height:1.6">
+        OpenCode already had providers, agents, git, tools, and a polished TUI. <strong style="color:#b8860b">Conclave adds one thing:</strong> a team debate engine. ~12 files modified. The rest is OpenCode doing what it does best.
+      </p>
+    </section>
+
     <section id="features">
       <div style="text-align:center;margin-bottom:3rem" class="reveal">
         <div class="section-label">Capabilities</div>
@@ -337,8 +369,9 @@
       <div class="cards">
         <div class="card reveal"><div class="card-icon"><i class="fas fa-check-double"></i></div><h3>Democratic Consensus</h3><p>No single model decides. Structured rounds with LEAD, SUPPORT, ALIGN, BUILD, CHALLENGE signals. Winner chosen by endorsement score.</p></div>
         <div class="card reveal"><div class="card-icon"><i class="fas fa-magnifying-glass"></i></div><h3>Blind Spot Detection</h3><p>One model catches what another misses. Architecture flaws, edge cases, and security issues caught during deliberation.</p></div>
-        <div class="card reveal"><div class="card-icon"><i class="fas fa-chart-line"></i></div><h3>Live Reasoning</h3><p>Per-round reasoning blocks show each model's thought process. Expand to see how decisions were reached.</p></div>
-        <div class="card reveal"><div class="card-icon"><i class="fas fa-plug"></i></div><h3>Any Provider</h3><p>OpenAI, Anthropic, DeepSeek, Google, NVIDIA, Groq, Ollama. Mix any combination in the same team.</p></div>
+        <div class="card reveal"><div class="card-icon"><i class="fas fa-chart-line"></i></div>          <h3>Live Reasoning</h3><p>Watch each model think in real-time. Click to expand reasoning blocks. Round summaries always visible.</p></div>
+        <div class="card reveal"><div class="card-icon"><i class="fas fa-terminal"></i></div><h3>CLI Adapters</h3><p>Connect Claude Code, Gemini CLI, or Codex as team members. No API keys needed — uses your existing CLI auth. Perfect for those with subscriptions but no API access.</p></div>
+        <div class="card reveal"><div class="card-icon"><i class="fas fa-plug"></i></div><h3>Any Provider</h3><p>OpenAI, Anthropic, DeepSeek, Google, NVIDIA, Groq, Ollama. Mix API and CLI models in the same team.</p></div>
         <div class="card reveal"><div class="card-icon"><i class="fas fa-bookmark"></i></div><h3>Persistent Teams</h3><p>Multiple named teams with different model combos. Survive restarts. Switch with a single command.</p></div>
         <div class="card reveal"><div class="card-icon"><i class="fas fa-sitemap"></i></div><h3>Breaking Teams</h3><p>LLMs autonomously split into sub-teams for complex tasks. Frontend and backend in parallel with cross-team communication.</p></div>
       </div>
@@ -371,15 +404,52 @@
       </div>
     </section>
 
+    <section>
+      <div style="text-align:center;margin-bottom:2rem" class="reveal">
+        <div class="section-label">v1 Constraints</div>
+        <h2 class="section-title">What to <span style="color:#b8860b">Expect</span></h2>
+        <div class="section-line" style="margin:1rem auto 0"></div>
+      </div>
+
+      <div class="cards">
+        <div class="card reveal">
+          <div class="card-icon"><i class="fas fa-window-maximize"></i></div>
+          <h3>Context windows are real</h3>
+          <p>Each model has its own context limit. Conclave auto-truncates the debate thread per model — large-context models see everything, small-context models see signal summaries. No crashes, no compaction failures. Pair a 1M-token model (DeepSeek) with a 128K model (Gemini Flash) for optimal depth vs speed.</p>
+        </div>
+        <div class="card reveal">
+          <div class="card-icon"><i class="fas fa-clock"></i></div>
+          <h3>Latency is additive</h3>
+          <p>3 models debating 3 rounds = 9 API calls per message. Responses take longer than a single LLM. The tradeoff: better output quality for more complex tasks. For simple questions, switch to single model mode.</p>
+        </div>
+        <div class="card reveal">
+          <div class="card-icon"><i class="fas fa-coins"></i></div>
+          <h3>Cost mirrors team size</h3>
+          <p>Each team member makes independent API calls. A 3-model team costs 3× more per message. Free tiers (Gemini CLI, Ollama local models) offset this. Choose your team based on task complexity, not just model quality.</p>
+        </div>
+        <div class="card reveal">
+          <div class="card-icon"><i class="fas fa-flask"></i></div>
+          <h3>This is v1</h3>
+          <p>Conclave is weeks old. The debate engine works, teams persist, providers connect. But expect rough edges. Context optimization, live streaming, and Breaking Teams are on the roadmap. Feedback and contributions welcome.</p>
+        </div>
+      </div>
+    </section>
+
     <footer>
       <div>Conclave · Fork of <a href="https://github.com/anomalyco/opencode">OpenCode</a> · <a href="https://github.com/adndvlp/conclave/blob/main/LICENSE">MIT</a></div>
       <div><a href="https://github.com/adndvlp/conclave"><i class="fab fa-github"></i> adndvlp/conclave</a></div>
     </footer>
   </div>
 
-  <script>
-    function copy(){navigator.clipboard.writeText("curl -fsSL https://raw.githubusercontent.com/adndvlp/conclave/main/install.sh | bash");var b=document.getElementById('cb');b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},1500)}
-    function copy2(){navigator.clipboard.writeText("curl -fsSL https://raw.githubusercontent.com/adndvlp/conclave/main/install.sh | bash");var b=document.getElementById('cb2');b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},1500)}
+  <script is:inline>
+    window.copy=function(){
+      var t="curl -fsSL https://raw.githubusercontent.com/adndvlp/conclave/main/install.sh | bash";
+      var ta=document.createElement('textarea');ta.value=t;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+      var b=document.getElementById('cb');b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},1500)};
+    window.copy2=function(){
+      var t="curl -fsSL https://raw.githubusercontent.com/adndvlp/conclave/main/install.sh | bash";
+      var ta=document.createElement('textarea');ta.value=t;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+      var b=document.getElementById('cb2');b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},1500)};
 
     // Particles
     (function(){

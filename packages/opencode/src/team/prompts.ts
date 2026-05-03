@@ -24,35 +24,35 @@ export function buildDeliberationPrompt(input: {
 
   const teamList = [input.self, ...input.teammates].map((m) => m.name).join(", ")
   const breakSignal = input.allowBreak
-    ? `BREAK:<equipo>:<foco>[:<modelo1>,<modelo2>]  — propones sub-equipo, opcionalmente invitas compañeros\n` +
-      `  Ej: BREAK:backend:API y auth:${input.teammates[0]?.name ?? "ModeloX"}\n` +
-      `  Ej: BREAK:frontend:UI e integración\n` +
-      `  Modelos disponibles para invitar: ${teamList}\n`
+    ? `BREAK:<team>:<focus>[:<model1>,<model2>]  — propose a sub-team, optionally invite members\n` +
+      `  Ex: BREAK:backend:API and auth:${input.teammates[0]?.name ?? "ModelX"}\n` +
+      `  Ex: BREAK:frontend:UI and integration\n` +
+      `  Available models to invite: ${teamList}\n`
     : ""
 
   const signalInstructions =
     input.round === 1
-      ? `Ronda ${input.round}/${input.maxRounds} — primera impresión. No has leído las respuestas de tus compañeros aún.
+      ? `Round ${input.round}/${input.maxRounds} — first impression. You haven't read your teammates' responses yet.
 
-Emite EXACTAMENTE UNA señal al final de tu mensaje:
-PROPOSE:<tu enfoque>   — tu propuesta inicial
-QUESTION:<duda>        — si necesitas aclarar algo crítico antes de proponer
-${breakSignal}PASS                   — si no tienes nada que aportar`
-      : `Ronda ${input.round}/${input.maxRounds} — ya tienes el hilo completo de tu equipo arriba.
+Emit EXACTLY ONE signal at the end of your message:
+PROPOSE:<your approach>   — your initial proposal
+QUESTION:<doubt>          — if you need to clarify something critical before proposing
+${breakSignal}PASS                     — if you have nothing to contribute`
+      : `Round ${input.round}/${input.maxRounds} — you have the full team thread above.
 
-Emite EXACTAMENTE UNA señal al final de tu mensaje:
-LEAD:<razón>                        — tomas ownership, explica por qué tú
-SUPPORT:<nombre>:<razón>            — respaldas el liderazgo de alguien con argumento concreto
-ALIGN:<nombre>:<razón>              — te convencieron, di por qué
-BUILD:<qué agregas>                 — algo nuevo sobre lo que ya está propuesto
-CHALLENGE:<punto específico>        — objeción concreta (no "necesita más análisis")
-SYNTHESIZE:<combina ideas de X e Y> — fusionas propuestas en algo mejor
-EXTEND:<razón>                      — el equipo necesita más rondas (si mayoría vota, se agregan)
-PASS                                — nada que añadir`
+Emit EXACTLY ONE signal at the end of your message:
+LEAD:<reason>                        — take ownership, explain why you
+SUPPORT:<name>:<reason>              — support someone's leadership with concrete argument
+ALIGN:<name>:<reason>                — they convinced you, say why
+BUILD:<what you add>                 — something new on what's already proposed
+CHALLENGE:<specific point>           — concrete objection (not "needs more analysis")
+SYNTHESIZE:<combine ideas of X and Y> — merge proposals into something better
+EXTEND:<reason>                      — the team needs more rounds (if majority votes, add them)
+PASS                                 — nothing to add`
 
-  const system = `Eres ${input.self.name}, parte de un equipo de modelos resolviendo un task de código.
+  const system = `You are ${input.self.name}, part of a team of models solving a coding task.
 
-Tu perfil:
+Your profile:
 - Provider: ${input.self.providerID}
 - Context window: ${input.self.limit?.context ?? "?"}k tokens
 - Capabilities: ${Object.entries(input.self.capabilities ?? {})
@@ -60,13 +60,19 @@ Tu perfil:
     .map(([k]) => k)
     .join(", ")}
 
-Equipo completo:
+Full team:
 ${teamContext}
 
 TASK: ${input.task}
 
-El objetivo es la mejor solución. No hay egos — construye sobre ideas ajenas, desafía con razón concreta.
-Puedes asumir un rol si lo ves útil. El equipo se auto-organiza.
+The goal is the best solution. No ego — build on others' ideas, challenge with concrete reason.
+You can assume a role if useful. The team self-organizes.
+
+Self-assignment rules based on your context:
+- If your context window is small, don't try to read the entire codebase. Delegate global analysis to a teammate with more context.
+- If you're fast, focus on execution. If you have deep reasoning, focus on analysis and design.
+- If your teammate has more context than you, trust their codebase analysis. Don't duplicate it.
+- If the task requires deep investigation of a specific file, any model can do it.
 
 ---
 ${signalInstructions}`
@@ -76,10 +82,10 @@ ${signalInstructions}`
   if (input.thread) {
     messages.push({
       role: "user",
-      content: `Hilo del equipo hasta ahora:\n\n${input.thread}\n\nTu respuesta:`,
+      content: `Team thread so far:\n\n${input.thread}\n\nYour response:`,
     })
   } else {
-    messages.push({ role: "user", content: "Tu respuesta:" })
+    messages.push({ role: "user", content: "Your response:" })
   }
 
   return messages
@@ -109,34 +115,34 @@ export function buildSubTeamPrompt(input: {
 
   const signalInstructions =
     input.round === 1
-      ? `Ronda interna ${input.round}/${input.maxRounds} — primera ronda de tu sub-equipo.
+      ? `Internal round ${input.round}/${input.maxRounds} — first round of your sub-team.
 
-Emite EXACTAMENTE UNA señal al final de tu mensaje:
-PROPOSE:<tu enfoque>   — tu propuesta inicial para el foco de este equipo
-QUESTION:<duda>        — si necesitas aclarar algo
-PASS                   — nada que aportar`
-      : `Ronda interna ${input.round}/${input.maxRounds}.
+Emit EXACTLY ONE signal at the end of your message:
+PROPOSE:<your approach>   — your initial proposal for this team's focus
+QUESTION:<doubt>          — if you need to clarify something
+PASS                      — nothing to contribute`
+      : `Internal round ${input.round}/${input.maxRounds}.
 
-Emite EXACTAMENTE UNA señal al final de tu mensaje:
-LEAD:<razón>                        — tomas ownership en este sub-equipo
-SUPPORT:<nombre>:<razón>            — respaldas el liderazgo de alguien
-ALIGN:<nombre>:<razón>              — te convencieron
-BUILD:<qué agregas>                 — algo nuevo sobre lo propuesto
-CHALLENGE:<punto específico>        — objeción concreta
-SYNTHESIZE:<combina ideas de X e Y> — fusionas propuestas
-EXTEND:<razón>                      — necesitan más rondas internas
-PASS                                — nada que añadir`
+Emit EXACTLY ONE signal at the end of your message:
+LEAD:<reason>                        — take ownership in this sub-team
+SUPPORT:<name>:<reason>              — support someone's leadership
+ALIGN:<name>:<reason>                — they convinced you
+BUILD:<what you add>                 — something new on what's proposed
+CHALLENGE:<specific point>           — concrete objection
+SYNTHESIZE:<combine ideas of X and Y> — merge proposals
+EXTEND:<reason>                      — need more internal rounds
+PASS                                 — nothing to add`
 
-  const system = `Eres ${input.self.name}, parte del sub-equipo "${input.teamName}".
+  const system = `You are ${input.self.name}, part of sub-team "${input.teamName}".
 
-FOCO DE TU EQUIPO: ${input.focus}
+YOUR TEAM'S FOCUS: ${input.focus}
 
-Tu sub-equipo:
-${teammateContext ? `${input.self.name} (tú)\n${teammateContext}` : `${input.self.name} (tú — único miembro)`}
+Your sub-team:
+${teammateContext ? `${input.self.name} (you)\n${teammateContext}` : `${input.self.name} (you — only member)`}
 ${crossTeamSection}
-TASK GLOBAL: ${input.task}
+GLOBAL TASK: ${input.task}
 
-Trabaja exclusivamente en el foco de tu sub-equipo. Los otros equipos se encargan del resto.
+Work exclusively on your sub-team's focus. Other teams handle the rest.
 
 ---
 ${signalInstructions}`
@@ -146,10 +152,10 @@ ${signalInstructions}`
   if (input.thread) {
     messages.push({
       role: "user",
-      content: `Hilo de tu sub-equipo:\n\n${input.thread}\n\nTu respuesta:`,
+      content: `Your sub-team thread:\n\n${input.thread}\n\nYour response:`,
     })
   } else {
-    messages.push({ role: "user", content: "Tu respuesta:" })
+    messages.push({ role: "user", content: "Your response:" })
   }
 
   return messages
@@ -167,31 +173,31 @@ export function buildGlobalRoundPrompt(input: {
     .map((t) => `**${t.name}**:\n${t.summary}`)
     .join("\n\n")
 
-  const system = `Eres ${input.self.name}, ronda de coordinación global entre sub-equipos.
+  const system = `You are ${input.self.name}, global coordination round between sub-teams.
 
 TASK: ${input.task}
 
-Esta es una ronda de coordinación. Los sub-equipos han completado su ciclo interno.
-Aquí el resumen de progreso de cada equipo para que puedas coordinar.
+This is a coordination round. Sub-teams have completed their internal cycles.
+Here's the progress summary of each team so you can coordinate.
 
-Tu sub-equipo (${input.myTeamName}):
+Your sub-team (${input.myTeamName}):
 ${input.myTeamSummary}
 
-Otros equipos:
+Other teams:
 ${otherTeamsSection}
 
 ---
-Ronda global ${input.globalRound}.
+Global round ${input.globalRound}.
 
-Si necesitas comunicar algo a los otros equipos (preguntas, dependencias, bloqueos), usa BROADCAST.
-Si no tienes nada que comunicar y tu equipo puede continuar trabajando, usa PASS.
+If you need to communicate something to other teams (questions, dependencies, blockers), use BROADCAST.
+If you have nothing to communicate and your team can continue working, use PASS.
 
-Emite EXACTAMENTE UNA señal al final de tu mensaje:
-BROADCAST:<mensaje>   — comunicas algo a todos los otros equipos (ej: "necesito el endpoint POST /auth/login")
-PASS                  — nada que comunicar, seguir trabajando en sub-equipos`
+Emit EXACTLY ONE signal at the end of your message:
+BROADCAST:<message>   — communicate something to all other teams (e.g., "I need the endpoint POST /auth/login")
+PASS                  — nothing to communicate, continue working in sub-teams`
 
   return [
     { role: "system", content: system },
-    { role: "user", content: "Tu respuesta:" },
+    { role: "user", content: "Your response:" },
   ]
 }

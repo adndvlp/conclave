@@ -1,5 +1,5 @@
 <p align="center">
-  <h1>⚡ Conclave</h1>
+  <h1>🔑 Conclave</h1>
 </p>
 <p align="center"><strong>Multi-LLM collaborative coding agent.</strong></p>
 <p align="center">

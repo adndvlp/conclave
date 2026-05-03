@@ -572,6 +572,7 @@ function renderable(part: PartType, showReasoningSummaries = true) {
   }
   if (part.type === "text") return !!part.text?.trim()
   if (part.type === "reasoning") return showReasoningSummaries && !!part.text?.trim()
+  if (part.type === "team_round") return !!part.text?.trim()
   return !!PART_MAPPING[part.type]
 }
 
@@ -1515,18 +1516,53 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
 }
 
 PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
+  const i18n = useI18n()
   const part = () => props.part as ReasoningPart
   const streaming = createMemo(
     () => props.message.role === "assistant" && typeof (props.message as AssistantMessage).time.completed !== "number",
   )
   const text = () => part().text.trim()
+  const [open, setOpen] = createSignal(false)
 
   return (
     <Show when={text()}>
-      <div data-component="reasoning-part">
-        <Show when={streaming()} fallback={<Markdown text={text()} cacheKey={part().id} streaming={false} />}>
-          <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} />
-        </Show>
+      <Collapsible open={open()} onOpenChange={setOpen} variant="ghost" class="tool-collapsible">
+        <Collapsible.Trigger>
+          <div data-component="reasoning-part-trigger">
+            <span data-slot="reasoning-part-label" class="text-14-medium text-text-strong">
+              {i18n.t("ui.sessionTurn.status.thinking")}
+            </span>
+            <Collapsible.Arrow />
+          </div>
+        </Collapsible.Trigger>
+        <Collapsible.Content>
+          <div data-component="reasoning-part">
+            <Show when={streaming()} fallback={<Markdown text={text()} cacheKey={part().id} streaming={false} />}>
+              <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} />
+            </Show>
+          </div>
+        </Collapsible.Content>
+      </Collapsible>
+    </Show>
+  )
+}
+
+PART_MAPPING["team_round"] = function TeamRoundPartDisplay(props) {
+  const part = () => props.part as any
+  const text = () => (part().text ?? "").trim()
+  const round = () => part().round as number
+
+  return (
+    <Show when={text()}>
+      <div data-component="team-round-part">
+        <div data-slot="team-round-header">
+          <span data-slot="team-round-label" class="text-12-regular text-text-weak">
+            Round {round()}
+          </span>
+        </div>
+        <div data-slot="team-round-content">
+          <Markdown text={text()} cacheKey={part().id} streaming={false} />
+        </div>
       </div>
     </Show>
   )

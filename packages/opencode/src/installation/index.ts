@@ -134,8 +134,8 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
       )
 
       const getBrewFormula = Effect.fnUntraced(function* () {
-        const tapFormula = yield* text(["brew", "list", "--formula", "anomalyco/tap/opencode"])
-        if (tapFormula.includes("opencode")) return "anomalyco/tap/opencode"
+        const tapFormula = yield* text(["brew", "list", "--formula", "adndvlp/tap/conclave"])
+        if (tapFormula.includes("conclave")) return "adndvlp/tap/conclave"
         const coreFormula = yield* text(["brew", "list", "--formula", "opencode"])
         if (coreFormula.includes("opencode")) return "opencode"
         return "opencode"
@@ -143,7 +143,9 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
 
       const upgradeCurl = Effect.fnUntraced(
         function* (target: string) {
-          const response = yield* httpOk.execute(HttpClientRequest.get("https://opencode.ai/install"))
+          const response = yield* httpOk.execute(
+            HttpClientRequest.get("https://raw.githubusercontent.com/adndvlp/conclave/main/install.sh"),
+          )
           const body = yield* response.text
           const bodyBytes = new TextEncoder().encode(body)
           const proc = ChildProcess.make("bash", [], {
@@ -171,7 +173,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
           }
         }),
         method: Effect.fn("Installation.method")(function* () {
-          if (process.execPath.includes(path.join(".opencode", "bin"))) return "curl" as Method
+          if (process.execPath.includes(path.join(".conclave", "bin"))) return "curl" as Method
           if (process.execPath.includes(path.join(".local", "bin"))) return "curl" as Method
           const exec = process.execPath.toLowerCase()
 
@@ -196,7 +198,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
           for (const check of checks) {
             const output = yield* check.command()
             const installedName =
-              check.name === "brew" || check.name === "choco" || check.name === "scoop" ? "opencode" : "opencode-ai"
+              check.name === "brew" || check.name === "choco" || check.name === "scoop" ? "conclave" : "conclave"
             if (output.includes(installedName)) {
               return check.name
             }
@@ -254,7 +256,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
           }
 
           const response = yield* httpOk.execute(
-            HttpClientRequest.get("https://api.github.com/repos/anomalyco/opencode/releases/latest").pipe(
+            HttpClientRequest.get("https://api.github.com/repos/adndvlp/conclave/releases/latest").pipe(
               HttpClientRequest.acceptJson,
             ),
           )

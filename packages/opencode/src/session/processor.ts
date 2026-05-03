@@ -21,6 +21,9 @@ import { errorMessage } from "@/util/error"
 import * as Log from "@opencode-ai/core/util/log"
 import { isRecord } from "@/util/record"
 import { Team } from "@/team"
+import { CLI_PROVIDER_IDS, callGeminiAgent, callClaudeAgent, callCodex } from "@/team/cli-adapter"
+import type { CliParticipant } from "@/team/debate"
+import { EffectBridge } from "@/effect/bridge"
 
 const DOOM_LOOP_THRESHOLD = 3
 const log = Log.create({ service: "session.processor" })
@@ -553,8 +556,9 @@ export const layer: Layer.Layer<
               id: PartID.ascending(),
               messageID: ctx.assistantMessage.id,
               sessionID: ctx.assistantMessage.sessionID,
-              type: "reasoning" as const,
-              text: `### Ronda ${round}\n\n${roundText}`,
+              type: "team_round" as const,
+              round,
+              text: roundText,
               time: { start: now, end: now },
             })
           })
@@ -563,16 +567,93 @@ export const layer: Layer.Layer<
           Effect.orElseSucceed(() => Option.none()),
         )
         let finalInput: LLM.StreamInput
+        let cliImplementer: CliParticipant | null = null
         if (Option.isSome(teamModel)) {
-          const { model } = teamModel.value
-          slog.info("team.implementer", { modelID: model.id, providerID: model.providerID })
-          ctx.assistantMessage.modelID = model.id
-          ctx.assistantMessage.providerID = model.providerID
-          ctx.model = model
-          yield* session.updateMessage(ctx.assistantMessage)
-          finalInput = { ...streamInput, model }
+          const { participant, thread: _thread } = teamModel.value
+          const model = participant.model
+          if (CLI_PROVIDER_IDS.has(model.providerID)) {
+            slog.info("team.implementer.cli", { modelID: model.id, providerID: model.providerID })
+            cliImplementer = participant as CliParticipant
+            ctx.assistantMessage.modelID = model.id
+            ctx.assistantMessage.providerID = model.providerID
+            ctx.model = model
+            yield* session.updateMessage(ctx.assistantMessage)
+            finalInput = streamInput
+          } else {
+            slog.info("team.implementer", { modelID: model.id, providerID: model.providerID })
+            ctx.assistantMessage.modelID = model.id
+            ctx.assistantMessage.providerID = model.providerID
+            ctx.model = model
+            yield* session.updateMessage(ctx.assistantMessage)
+            finalInput = { ...streamInput, model }
+          }
         } else {
           finalInput = streamInput
+        }
+
+        // CLI implementation path — run agentic CLI subprocess directly
+        if (cliImplementer) {
+          const cli = cliImplementer
+          const bridge = yield* EffectBridge.make()
+          yield* Effect.callback<void>((resume) => {
+            ;(async () => {
+              try {
+                const start = Date.now()
+                const partID = PartID.ascending()
+
+                bridge.fork(
+                  session.updatePart({
+                    id: partID,
+                    messageID: ctx.assistantMessage.id,
+                    sessionID: ctx.assistantMessage.sessionID,
+                    type: "text",
+                    text: "",
+                    time: { start },
+                  }),
+                )
+
+                let prevLen = 0
+                const onChunk = (accumulated: string) => {
+                  const delta = accumulated.slice(prevLen)
+                  prevLen = accumulated.length
+                  if (!delta) return
+                  bridge.fork(
+                    session.updatePartDelta({
+                      sessionID: ctx.assistantMessage.sessionID,
+                      messageID: ctx.assistantMessage.id,
+                      partID,
+                      field: "text",
+                      delta,
+                    }),
+                  )
+                }
+
+                let accumulated = ""
+                if (cli.cli === "gemini") {
+                  accumulated = await callGeminiAgent(cli.bin, finalInput.messages as any, cli.model.id, onChunk)
+                } else if (cli.cli === "claude-code") {
+                  accumulated = await callClaudeAgent(cli.bin, finalInput.messages as any, cli.model.id, onChunk)
+                } else {
+                  accumulated = await callCodex(cli.bin, finalInput.messages as any, cli.model.id, onChunk)
+                }
+
+                bridge.fork(
+                  session.updatePart({
+                    id: partID,
+                    messageID: ctx.assistantMessage.id,
+                    sessionID: ctx.assistantMessage.sessionID,
+                    type: "text",
+                    text: accumulated,
+                    time: { start, end: Date.now() },
+                  }),
+                )
+                resume(Effect.void)
+              } catch {
+                resume(Effect.void)
+              }
+            })()
+          })
+          return "stop" as const
         }
 
         return yield* Effect.gen(function* () {

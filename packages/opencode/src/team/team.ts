@@ -8,6 +8,8 @@ import { EffectBridge } from "@/effect/bridge"
 import type { LLM } from "@/session/llm"
 import type { ModelMessage } from "ai"
 
+export type { Participant }
+
 const log = Log.create({ service: "team" })
 
 export interface Interface {
@@ -15,7 +17,7 @@ export interface Interface {
     streamInput: LLM.StreamInput,
     sessionID: string,
     onRoundComplete?: (round: number, roundText: string) => Effect.Effect<void>,
-  ) => Effect.Effect<Option.Option<{ model: Provider.Model; thread: string }>>
+  ) => Effect.Effect<Option.Option<{ participant: Participant; thread: string }>>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Team") {}
@@ -45,7 +47,7 @@ export const layer = Layer.effect(
       onRoundComplete?: (round: number, roundText: string) => Effect.Effect<void>,
     ) {
       const members = streamInput.user.team
-      let result: Option.Option<{ model: Provider.Model; thread: string }> = Option.none()
+      let result: Option.Option<{ participant: Participant; thread: string }> = Option.none()
 
       if (members && members.length >= 2) {
         const task = extractTask(streamInput.messages)
@@ -186,7 +188,7 @@ export const layer = Layer.effect(
           })
 
           yield* status.set(sessionID as any, { type: "busy" })
-          result = Option.some({ model: debateResult.implementer.model, thread: debateResult.thread })
+          result = Option.some({ participant: debateResult.implementer, thread: debateResult.thread })
         } else {
           log.warn("team.insufficient_members", { found: participants.length })
         }

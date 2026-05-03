@@ -3,7 +3,6 @@ import { EOL } from "os"
 import { NamedError } from "@opencode-ai/core/util/error"
 
 const RED = "\x1b[38;2;220;38;38m"
-const GOLD = "\x1b[38;2;200;160;20m"
 const RESET = "\x1b[0m"
 
 const wordmark = [
@@ -17,22 +16,21 @@ const wordmark = [
 ]
 
 export const CancelledError = NamedError.create("UICancelledError", z.void())
-
 export const Style = {
-  TEXT_HIGHLIGHT: "\x1b[38;2;162;18;18m",
-  TEXT_HIGHLIGHT_BOLD: "\x1b[38;2;162;18;18m\x1b[1m",
-  TEXT_DIM: "\x1b[90m",
-  TEXT_DIM_BOLD: "\x1b[90m\x1b[1m",
+  TEXT_HIGHLIGHT: "\x1b[38;2;121;40;202m", // Lumina Purple
+  TEXT_HIGHLIGHT_BOLD: "\x1b[38;2;121;40;202m\x1b[1m",
+  TEXT_DIM: "\x1b[38;2;102;102;102m",
+  TEXT_DIM_BOLD: "\x1b[38;2;102;102;102m\x1b[1m",
   TEXT_NORMAL: "\x1b[0m",
   TEXT_NORMAL_BOLD: "\x1b[1m",
-  TEXT_WARNING: "\x1b[93m",
-  TEXT_WARNING_BOLD: "\x1b[93m\x1b[1m",
-  TEXT_DANGER: "\x1b[91m",
-  TEXT_DANGER_BOLD: "\x1b[91m\x1b[1m",
-  TEXT_SUCCESS: "\x1b[92m",
-  TEXT_SUCCESS_BOLD: "\x1b[92m\x1b[1m",
-  TEXT_INFO: "\x1b[94m",
-  TEXT_INFO_BOLD: "\x1b[94m\x1b[1m",
+  TEXT_WARNING: "\x1b[38;2;245;166;35m",
+  TEXT_WARNING_BOLD: "\x1b[38;2;245;166;35m\x1b[1m",
+  TEXT_DANGER: "\x1b[38;2;238;0;0m",
+  TEXT_DANGER_BOLD: "\x1b[38;2;238;0;0m\x1b[1m",
+  TEXT_SUCCESS: "\x1b[38;2;0;112;243m", // Vercel Blue
+  TEXT_SUCCESS_BOLD: "\x1b[38;2;0;112;243m\x1b[1m",
+  TEXT_INFO: "\x1b[38;2;0;112;243m",
+  TEXT_INFO_BOLD: "\x1b[38;2;0;112;243m\x1b[1m",
 }
 
 export function println(...message: string[]) {

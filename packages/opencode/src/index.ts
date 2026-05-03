@@ -49,9 +49,10 @@ process.on("unhandledRejection", (e) => {
 })
 
 process.on("uncaughtException", (e) => {
-  Log.Default.error("exception", {
-    e: errorMessage(e),
-  })
+  const msg = errorMessage(e)
+  Log.Default.error("exception", { e: msg })
+  process.stderr.write(UI.Style.TEXT_DANGER + msg.split("\n")[0] + UI.Style.TEXT_NORMAL + EOL)
+  process.exit(1)
 })
 
 const args = hideBin(process.argv)
@@ -65,6 +66,9 @@ function show(out: string) {
   }
   process.stderr.write(out)
 }
+
+
+
 
 const cli = yargs(args)
   .parserConfiguration({ "populate--": true })
@@ -150,6 +154,7 @@ const cli = yargs(args)
       }
       process.stderr.write("Database migration complete." + EOL)
     }
+
   })
   .usage("")
   .completion("completion", "generate shell completion script")

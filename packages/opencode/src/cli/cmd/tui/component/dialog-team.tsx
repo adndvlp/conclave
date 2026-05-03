@@ -8,6 +8,15 @@ import { TextAttributes } from "@opentui/core"
 import { useDialog } from "@tui/ui/dialog"
 import { DialogPrompt } from "@tui/ui/dialog-prompt"
 
+const EFFORTS = ["low", "medium", "high", "xhigh", "max"]
+
+function baseName(modelID: string): string {
+  for (const e of EFFORTS) {
+    if (modelID.endsWith("-" + e)) return modelID.replace("-" + e, "")
+  }
+  return modelID
+}
+
 function Checkmark(props: { providerID: string; modelID: string }) {
   const local = useLocal()
   const { theme } = useTheme()
@@ -83,7 +92,6 @@ export function DialogTeamModels() {
 
   const options = createMemo(() => {
     const ids = connectedIds()
-    // Force re-compute on any team change by accessing members directly
     const _members = local.team.list()[local.team.activeIndex]?.members
     const _len = _members?.length ?? 0
 
@@ -102,32 +110,169 @@ export function DialogTeamModels() {
     const providerOptions = validProviders.flatMap((provider) =>
       Object.entries(provider.models)
         .filter(([_, info]) => info.status !== "deprecated")
-        .sort(([_, a], [__, b]) => (a.name ?? "").localeCompare(b.name ?? ""))
         .map(([modelID, info]) => ({
-          value: { providerID: provider.id, modelID },
+          providerID: provider.id,
+          modelID,
           title: info.name ?? modelID,
           description: provider.name,
-          footer: <Checkmark providerID={provider.id} modelID={modelID} />,
         })),
     )
 
-    const favoritesList = providerOptions
-      .filter((o) => favorites.some((f) => f.providerID === o.value.providerID && f.modelID === o.value.modelID))
+    // Group by base model name
+    const grouped = new Map<string, {
+      providerID: string
+      baseID: string
+      displayName: string
+      description: string
+      variants: Array<{ modelID: string; title: string; }>
+    }>()
+
+    for (const m of providerOptions) {
+      const base = baseName(m.modelID)
+      const key = m.providerID + ":" + base
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          providerID: m.providerID,
+          baseID: base,
+          displayName: base === m.modelID ? m.title : m.title.replace(/\s*\(.*?\)\s*/g, "").trim(),
+          description: m.description,
+          variants: [],
+        })
+      }
+      grouped.get(key)!.variants.push({ modelID: m.modelID, title: m.title })
+      // Remove base variant (model without reasoning level)
+      grouped.get(key)!.variants = grouped.get(key)!.variants.filter((v) => v.modelID !== base || grouped.get(key)!.variants.length === 1)
+    }
+
+    for (const [_, g] of grouped) {
+      g.variants.sort((a, b) => {
+        const aIdx = EFFORTS.findIndex((e) => a.modelID.endsWith("-" + e))
+        const bIdx = EFFORTS.findIndex((e) => b.modelID.endsWith("-" + e))
+        if (aIdx === -1 && bIdx === -1) return 0
+        if (aIdx === -1) return 1
+        if (bIdx === -1) return -1
+        return aIdx - bIdx
+      })
+    }
+
+    const baseOptions = Array.from(grouped.values())
+      .sort((a, b) => a.displayName.localeCompare(b.displayName))
+      .map((g) => {
+        const hasVariants = g.variants.length > 1
+        const members = local.team.list()[local.team.activeIndex]?.members ?? []
+        const selectedVariant = g.variants.find((v) =>
+          members.some((m) => m.providerID === g.providerID && m.modelID === v.modelID),
+        )
+        const displayTitle = selectedVariant ? selectedVariant.title : g.displayName
+        return {
+          value: {
+            providerID: g.providerID,
+            baseID: g.baseID,
+            displayName: g.displayName,
+            variants: g.variants as Array<{ modelID: string; title: string }>,
+            hasVariants,
+          },
+          title: displayTitle,
+          description: g.description,
+          footer: selectedVariant
+            ? <span style={{ fg: "#0a0" }}>✓ Selected</span>
+            : <span style={{ fg: "#666" }}>○</span>,
+        }
+      })
+
+    const favoritesList = baseOptions
+      .filter((o) => favorites.some((f) => f.providerID === o.value.providerID && f.modelID === o.value.baseID))
       .map((o) => ({ ...o, category: "Favorites" }))
 
-    const others = providerOptions.filter(
-      (o) => !favorites.some((f) => f.providerID === o.value.providerID && f.modelID === o.value.modelID),
+    const others = baseOptions.filter(
+      (o) => !favorites.some((f) => f.providerID === o.value.providerID && f.modelID === o.value.baseID),
     )
 
-    return favoritesList.length > 0 ? [...favoritesList, ...others] : providerOptions
+    return favoritesList.length > 0 ? [...favoritesList, ...others] : baseOptions
   })
+
+  function cycleVariant(
+    providerID: string,
+    variants: Array<{ modelID: string; title: string }>,
+    direction: -1 | 1,
+  ) {
+    const members = local.team.current() ?? []
+    const currentIdx = members.findIndex(
+      (m) => m.providerID === providerID && variants.some((v) => v.modelID === m.modelID),
+    )
+    if (currentIdx < 0) return
+
+    const currentModelID = members[currentIdx].modelID
+    const variantIdx = variants.findIndex((v) => v.modelID === currentModelID)
+    if (variantIdx < 0) return
+
+    const nextIdx = (variantIdx + direction + variants.length) % variants.length
+    const nextModelID = variants[nextIdx].modelID
+
+    const updated = [...members]
+    updated[currentIdx] = { providerID, modelID: nextModelID }
+    local.team.set(updated)
+  }
 
   const keybinds = createMemo(() => [
     {
       keybind: Keybind.parse("space")[0],
       title: "toggle",
-      onTrigger: (option: { value: { providerID: string; modelID: string } }) => {
-        local.team.toggle(option.value.providerID, option.value.modelID)
+      onTrigger: (option: {
+        value: {
+          providerID: string
+          baseID: string
+          variants: Array<{ modelID: string; title: string }>
+          hasVariants: boolean
+        }
+      }) => {
+        if (!option.value.hasVariants) {
+          local.team.toggle(option.value.providerID, option.value.baseID)
+          return
+        }
+        const members = local.team.current() ?? []
+        const alreadySelected = members.find(
+          (m) =>
+            m.providerID === option.value.providerID &&
+            option.value.variants.some((v) => v.modelID === m.modelID),
+        )
+        if (alreadySelected) {
+          local.team.toggle(option.value.providerID, alreadySelected.modelID)
+        } else {
+          local.team.toggle(option.value.providerID, option.value.variants[0].modelID)
+        }
+      },
+    },
+    {
+      keybind: Keybind.parse("right")[0],
+      title: "→ level",
+      onTrigger: (option: {
+        value: {
+          providerID: string
+          baseID: string
+          variants: Array<{ modelID: string; title: string }>
+          hasVariants: boolean
+        }
+      }) => {
+        if (option.value.hasVariants && option.value.variants.length > 1) {
+          cycleVariant(option.value.providerID, option.value.variants, 1)
+        }
+      },
+    },
+    {
+      keybind: Keybind.parse("left")[0],
+      title: "← level",
+      onTrigger: (option: {
+        value: {
+          providerID: string
+          baseID: string
+          variants: Array<{ modelID: string; title: string }>
+          hasVariants: boolean
+        }
+      }) => {
+        if (option.value.hasVariants && option.value.variants.length > 1) {
+          cycleVariant(option.value.providerID, option.value.variants, -1)
+        }
       },
     },
     {
@@ -155,7 +300,7 @@ export function DialogTeamModels() {
       },
     },
     {
-      keybind: Keybind.parse("backspace")[0],
+      keybind: Keybind.parse("escape")[0],
       title: "back to teams",
       onTrigger: () => {
         dialog.replace(() => <DialogTeamList />)

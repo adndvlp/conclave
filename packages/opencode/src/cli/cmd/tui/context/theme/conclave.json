@@ -48,6 +48,7 @@
     "warning": { "dark": "darkOrange", "light": "lightOrange" },
     "success": { "dark": "darkGreen", "light": "lightGreen" },
     "info": { "dark": "darkCyan", "light": "lightCyan" },
+    "selectedListItemText": { "dark": "#ffffff", "light": "#ffffff" },
     "text": { "dark": "darkStep12", "light": "lightStep12" },
     "textMuted": { "dark": "darkStep11", "light": "lightStep11" },
     "background": { "dark": "darkStep1", "light": "lightStep1" },

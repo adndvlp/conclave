@@ -188,6 +188,25 @@ function callParticipant(
 
 // ─── Core debate ─────────────────────────────────────────────────────────────
 
+function buildThreadForModel(fullThread: string, contextLimit: number): string {
+  // Rough estimate: 1 token ≈ 4 chars. Keep thread under 25% of context.
+  const maxChars = Math.floor(contextLimit * 0.25 * 4)
+  if (fullThread.length <= maxChars) return fullThread
+
+  // Truncate: keep only signal summaries (lines with LEAD, SUPPORT, etc.)
+  const lines = fullThread.split("\n")
+  const signalLines = lines.filter((l) => /\[.*\]:\s*(LEAD|SUPPORT|ALIGN|SYNTHESIZE|PROPOSE|QUESTION|CHALLENGE|BUILD|PASS)/.test(l))
+  let truncated = signalLines.join("\n")
+
+  // If signal-only is too long, just keep last N signal lines
+  while (truncated.length > maxChars && signalLines.length > 3) {
+    signalLines.shift()
+    truncated = signalLines.join("\n")
+  }
+
+  return truncated || "(thread truncated)"
+}
+
 export const runDebate = Effect.fn("Team.runDebate")(function* (
   participants: Participant[],
   task: string,
@@ -197,6 +216,7 @@ export const runDebate = Effect.fn("Team.runDebate")(function* (
   roundExtension = 1,
   onProgress?: ProgressCallback,
   onRoundComplete?: (round: number, text: string) => Effect.Effect<void>,
+  onParticipantChunk?: (modelName: string, text: string, round: number) => void,
 ): Generator<any, DebateResult> {
   let thread = ""
   let implementer: Participant | null = null
@@ -211,20 +231,21 @@ export const runDebate = Effect.fn("Team.runDebate")(function* (
     rounds = round
 
     const roundResults = yield* Effect.all(
-      participants.map((p) =>
-        callParticipant(
+      participants.map((p) => {
+        const modelThread = buildThreadForModel(thread, p.model.limit?.context ?? 128000)
+        return callParticipant(
           p,
           buildDeliberationPrompt({
             self: p.model,
             teammates: participants.filter((x) => x.model.id !== p.model.id).map((x) => x.model),
             task,
-            thread,
+            thread: modelThread,
             round,
             maxRounds: dynamicMax,
           }),
-          { maxOutputTokens: 1024, round },
-        ),
-      ),
+          { maxOutputTokens: 1024, round, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, round) : undefined },
+        )
+      }),
       { concurrency: "unbounded" },
     )
 
@@ -264,7 +285,7 @@ export const runDebate = Effect.fn("Team.runDebate")(function* (
       const roundSummary = roundSignals
         .map((s) => `- **${s.model}**: ${s.signal}${s.text ? `\n  > ${s.text.slice(0, 200)}` : ""}`)
         .join("\n")
-      yield* onRoundComplete(round, `## Ronda ${round}\n\n${roundSummary || "Sin senales"}${thread ? `\n\n### Hilo\n\n${lastNLines(thread, 20)}` : ""}`)
+      yield* onRoundComplete(round, roundSummary || "No signals")
     }
 
     if (extendVotes > participants.length / 2 && extensions < maxExtensions) {
@@ -405,7 +426,7 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
           maxRounds: 1,
           allowBreak: true,
         }),
-        { maxOutputTokens: 512, round: 1, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, 0) : undefined },
+        { maxOutputTokens: 1024, round: 1, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, 0) : undefined },
       ),
     ),
     { concurrency: "unbounded" },
@@ -429,7 +450,7 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
   // Not enough BREAK votes or only 1 unique team → fall back to normal debate
   const uniqueTeams = new Set(breakProposals.map((p) => p.teamName.toLowerCase()))
   if (breakProposals.length < participants.length / 2 || uniqueTeams.size < 2) {
-    const result = yield* runDebate(participants, task, maxRounds, minRounds, 2, 1, undefined, onRoundComplete)
+    const result = yield* runDebate(participants, task, maxRounds, minRounds, 2, 1, undefined, onRoundComplete, onParticipantChunk)
     return {
       implementer: result.implementer,
       converged: result.converged,
@@ -514,7 +535,7 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
           const roundSignals: RoundSignal[] = []
 
           for (const { participant, text, signal } of roundResults) {
-            if (text) state.thread += `\n[${participant.model.name}]: ${text}\n`
+            if (text) state.thread += `\n[${participant.model.name}]: ${text.slice(0, 200)}${text.length > 200 ? "..." : ""}\n`
             if (signal) {
               const signalStr =
                 signal.type === "SUPPORT" || signal.type === "ALIGN"
@@ -594,7 +615,7 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
               task,
               globalRound,
             }),
-            { maxOutputTokens: 512, round: 2, isGlobal: true, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, globalRound) : undefined },
+            { maxOutputTokens: 1024, round: 2, isGlobal: true, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, globalRound) : undefined },
           ).pipe(Effect.map((r) => ({ ...r, teamName })))
         }),
         { concurrency: "unbounded" },

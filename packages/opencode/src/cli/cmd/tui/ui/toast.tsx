@@ -24,8 +24,8 @@ export function Toast() {
           position="absolute"
           justifyContent="center"
           alignItems="flex-start"
-          top={2}
-          right={2}
+          top={1}
+          right={1}
           maxWidth={Math.min(60, dimensions().width - 6)}
           paddingLeft={2}
           paddingRight={2}
@@ -33,12 +33,15 @@ export function Toast() {
           paddingBottom={1}
           backgroundColor={theme.backgroundPanel}
           borderColor={theme[current().variant]}
-          border={["left", "right"]}
-          customBorderChars={SplitBorder.customBorderChars}
+          border={["left"]}
+          customBorderChars={{
+            ...SplitBorder.customBorderChars,
+            vertical: "┃",
+          }}
         >
           <Show when={current().title}>
-            <text attributes={TextAttributes.BOLD} marginBottom={1} fg={theme.text}>
-              {current().title}
+            <text attributes={TextAttributes.BOLD} marginBottom={0} fg={theme[current().variant]}>
+              {current().title?.toUpperCase()}
             </text>
           </Show>
           <text fg={theme.text} wrapMode="word" width="100%">

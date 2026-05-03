@@ -140,6 +140,20 @@ export const ReasoningPart = Schema.Struct({
   .pipe(withStatics((s) => ({ zod: zod(s) })))
 export type ReasoningPart = Types.DeepMutable<Schema.Schema.Type<typeof ReasoningPart>>
 
+export const TeamRoundPart = Schema.Struct({
+  ...partBase,
+  type: Schema.Literal("team_round"),
+  round: NonNegativeInt,
+  text: Schema.String,
+  time: Schema.Struct({
+    start: NonNegativeInt,
+    end: Schema.optional(NonNegativeInt),
+  }),
+})
+  .annotate({ identifier: "TeamRoundPart" })
+  .pipe(withStatics((s) => ({ zod: zod(s) })))
+export type TeamRoundPart = Types.DeepMutable<Schema.Schema.Type<typeof TeamRoundPart>>
+
 const filePartSourceBase = {
   text: Schema.Struct({
     value: Schema.String,
@@ -416,6 +430,7 @@ const _Part = Schema.Union([
   TextPart,
   SubtaskPart,
   ReasoningPart,
+  TeamRoundPart,
   FilePart,
   ToolPart,
   StepStartPart,
@@ -431,6 +446,7 @@ export const Part = Object.assign(_Part, {
     | TextPart
     | SubtaskPart
     | ReasoningPart
+    | TeamRoundPart
     | FilePart
     | ToolPart
     | StepStartPart
@@ -446,6 +462,7 @@ export type Part =
   | TextPart
   | SubtaskPart
   | ReasoningPart
+  | TeamRoundPart
   | FilePart
   | ToolPart
   | StepStartPart

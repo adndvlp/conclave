@@ -142,4 +142,4 @@ app.command("/test", async ({ command, ack, say }) => {
 })
 
 await app.start()
-console.log("⚡️ Slack bot is running!")
+console.log("🔑 Slack bot is running!")

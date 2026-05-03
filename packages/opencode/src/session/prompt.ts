@@ -179,6 +179,19 @@ export const layer = Layer.effect(
       if (!firstUser || firstUser.info.role !== "user") return
       const firstInfo = firstUser.info
 
+      // For team sessions, use first user message text as title directly
+      if (firstInfo.team && firstInfo.team.length >= 2) {
+        const text = firstUser.parts
+          .filter((p): p is MessageV2.TextPart => p.type === "text")
+          .map((p) => p.text)
+          .join(" ")
+        if (text) {
+          const t = text.length > 100 ? text.substring(0, 97) + "..." : text
+          yield* sessions.setTitle({ sessionID: input.session.id, title: t })
+        }
+        return
+      }
+
       const subtasks = firstUser.parts.filter((p): p is MessageV2.SubtaskPart => p.type === "subtask")
       const onlySubtasks = subtasks.length > 0 && firstUser.parts.every((p) => p.type === "subtask")
 
@@ -1356,9 +1369,38 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           if (
             lastFinished &&
             lastFinished.summary !== true &&
-            (yield* compaction.isOverflow({ tokens: lastFinished.tokens, model }))
+            (yield* Effect.gen(function* () {
+              // For teams, check overflow against the member with smallest context
+              if (lastUser.team && lastUser.team.length >= 2) {
+                const teamModels = yield* Effect.all(
+                  lastUser.team.map((m) => provider.getModel(m.providerID, m.modelID).pipe(Effect.option)),
+                )
+                const smallest = teamModels
+                  .filter(Option.isSome)
+                  .map((m) => m.value)
+                  .sort((a, b) => (a.limit?.context ?? 0) - (b.limit?.context ?? 0))[0]
+                if (smallest) {
+                  return yield* compaction.isOverflow({ tokens: lastFinished.tokens, model: smallest })
+                }
+              }
+              return yield* compaction.isOverflow({ tokens: lastFinished.tokens, model })
+            }))
           ) {
-            yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
+            // For teams, use the member with largest context for compaction
+            const compactModel = lastUser.team?.length
+              ? yield* Effect.gen(function* () {
+                  const models = yield* Effect.all(
+                    lastUser.team!.map((m) => provider.getModel(m.providerID, m.modelID).pipe(Effect.option)),
+                  )
+                  const best = models
+                    .filter(Option.isSome)
+                    .map((m) => m.value)
+                    .sort((a, b) => (b.limit?.context ?? 0) - (a.limit?.context ?? 0))[0]
+                  return best ? { providerID: best.providerID, modelID: best.id } : lastUser.model
+                })
+              : lastUser.model
+
+            yield* compaction.create({ sessionID, agent: lastUser.agent, model: compactModel, auto: true })
             continue
           }
 
@@ -1485,10 +1527,24 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
             if (result === "stop") return "break" as const
             if (result === "compact") {
+              // For teams, use the member with largest context
+              const compactModel = lastUser.team?.length
+                ? yield* Effect.gen(function* () {
+                    const models = yield* Effect.all(
+                      lastUser.team!.map((m) => provider.getModel(m.providerID, m.modelID).pipe(Effect.option)),
+                    )
+                    const best = models
+                      .filter(Option.isSome)
+                      .map((m) => m.value)
+                      .sort((a, b) => (b.limit?.context ?? 0) - (a.limit?.context ?? 0))[0]
+                    return best ? { providerID: best.providerID, modelID: best.id } : lastUser.model
+                  })
+                : lastUser.model
+
               yield* compaction.create({
                 sessionID,
                 agent: lastUser.agent,
-                model: lastUser.model,
+                model: compactModel,
                 auto: true,
                 overflow: !handle.message.finish,
               })

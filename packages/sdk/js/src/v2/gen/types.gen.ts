@@ -715,6 +715,19 @@ export type ReasoningPart = {
   }
 }
 
+export type TeamRoundPart = {
+  id: string
+  sessionID: string
+  messageID: string
+  type: "team_round"
+  round: number
+  text: string
+  time: {
+    start: number
+    end?: number
+  }
+}
+
 export type FilePartSourceText = {
   value: string
   start: number
@@ -921,6 +934,7 @@ export type Part =
   | TextPart
   | SubtaskPart
   | ReasoningPart
+  | TeamRoundPart
   | FilePart
   | ToolPart
   | StepStartPart

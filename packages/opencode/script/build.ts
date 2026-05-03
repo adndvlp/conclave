@@ -220,6 +220,7 @@ for (const item of targets) {
         OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
         CONCLAVE_WORKER_PATH: workerPath,
         CONCLAVE_CHANNEL: `'${Script.channel}'`,
+        OPENCODE_CHANNEL: `'${Script.channel}'`,
         CONCLAVE_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
       },
   })

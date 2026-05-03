@@ -71,6 +71,7 @@ jobs:
       - name: Build all platforms
         run: bun run packages/opencode/script/build.ts --skip-embed-web-ui
         env:
+          OPENCODE_VERSION: ${{ steps.version.outputs.version }}
           CONCLAVE_CHANNEL: stable
 
       - name: Package binaries

@@ -12,7 +12,7 @@ DIM='\033[0;2m'
 REPO="adndvlp/conclave"
 
 echo -e "${RED}"
-echo "  ⚡ Conclave — Multi-LLM Collaborative AI"
+echo "  🔑 Conclave — Multi-LLM Collaborative AI"
 echo -e "${NC}"
 echo ""
 

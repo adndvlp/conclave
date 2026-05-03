@@ -31,6 +31,7 @@ import type {
   UserMessage,
   TextPart,
   ReasoningPart,
+  TeamRoundPart,
 } from "@opencode-ai/sdk/v2"
 import { useLocal } from "@tui/context/local"
 import { Locale } from "@/util/locale"
@@ -157,7 +158,7 @@ export function Session() {
   const [sidebar, setSidebar] = kv.signal<"auto" | "hide">("sidebar", "auto")
   const [sidebarOpen, setSidebarOpen] = createSignal(false)
   const [conceal, setConceal] = createSignal(true)
-  const [showThinking, setShowThinking] = kv.signal("thinking_visibility", true)
+  const [showThinking, setShowThinking] = kv.signal("thinking_visibility_v3", true)
   const [timestamps, setTimestamps] = kv.signal<"hide" | "show">("timestamps", "hide")
   const [showDetails, setShowDetails] = kv.signal("tool_details_visibility", true)
   const [showAssistantMetadata, _setShowAssistantMetadata] = kv.signal("assistant_metadata_visibility", true)
@@ -1103,45 +1104,6 @@ export function Session() {
               scrollAcceleration={scrollAcceleration()}
             >
                <box height={1} />
-               <Show when={debateStatus()}>
-                 {(s) => (
-                   <box paddingLeft={3} paddingBottom={1} flexDirection="column">
-                     <text fg={theme.textMuted}>
-                       {s().type === "breaking"
-                         ? `Team debating · Round ${s().round + 1}`
-                         : `Team debating · Round ${s().round}/${s().total}`
-                       }
-                     </text>
-                     <Show when={s().type === "debate" && (s().signals?.length ?? 0) > 0}>
-                       <box paddingLeft={2} paddingTop={0} flexDirection="column">
-                         <For each={s().signals ?? []}>
-                           {(sig) => (
-                             <text fg={theme.textMuted}>
-                               {sig.model}: {sig.signal}
-                             </text>
-                           )}
-                         </For>
-                       </box>
-                     </Show>
-                     <Show when={s().type === "breaking" && (s().streams?.length ?? 0) > 0}>
-                       <box paddingLeft={2} paddingTop={0} flexDirection="column">
-                         <For each={s().streams ?? []}>
-                           {(stream) => (
-                             <box flexDirection="column">
-                               <text fg={theme.textMuted}>
-                                 ▶ {stream.modelName}
-                               </text>
-                               <box paddingLeft={2} paddingBottom={1}>
-                                 <text fg={theme.textMuted}>{stream.text.trim().split("\n").slice(-5).join("\n")}</text>
-                               </box>
-                             </box>
-                           )}
-                         </For>
-                       </box>
-                     </Show>
-                   </box>
-                 )}
-               </Show>
                <For each={messages()}>
                 {(message, index) => (
                   <Switch>
@@ -1237,6 +1199,58 @@ export function Session() {
                   </Switch>
                 )}
               </For>
+               <Show when={debateStatus()}>
+                 {(s) => (
+                   <box paddingLeft={3} paddingBottom={1} flexDirection="column">
+                     <text fg={theme.textMuted}>
+                       {s().type === "breaking"
+                         ? `Team debating · Round ${Math.max(1, ...(s().streams?.map((st) => st.round) ?? [1]))}`
+                         : `Team debating · Round ${s().round}/${s().total}`
+                       }
+                      </text>
+                       <Show when={s().type === "breaking" || s().type === "debate"}>
+                         <box
+                           onMouseDown={(e) => {
+                             e.preventDefault()
+                             e.stopPropagation()
+                             setShowThinking((prev) => !prev)
+                           }}
+                         >
+                           <text fg={theme.accent}>
+                             {showThinking() ? "⊟ Hide reasoning" : "⊞ Show reasoning"}
+                           </text>
+                         </box>
+                       </Show>
+                      <Show when={s().type === "debate" && (s().signals?.length ?? 0) > 0}>
+                       <box paddingLeft={2} paddingTop={0} flexDirection="column">
+                         <For each={s().signals ?? []}>
+                           {(sig) => (
+                             <text fg={theme.textMuted}>
+                               {sig.model}: {sig.signal}
+                             </text>
+                           )}
+                         </For>
+                       </box>
+                     </Show>
+                     <Show when={s().type === "breaking" && (s().streams?.length ?? 0) > 0 && showThinking()}>
+                       <box paddingLeft={2} paddingTop={0} flexDirection="column">
+                         <For each={s().streams ?? []}>
+                           {(stream) => (
+                             <box flexDirection="column">
+                               <text fg={theme.textMuted}>
+                                 ▶ {stream.modelName}
+                               </text>
+                               <box paddingLeft={2} paddingBottom={1}>
+                                 <text fg={theme.textMuted}>{stream.text.trim().split("\n").slice(-5).join("\n")}</text>
+                               </box>
+                             </box>
+                           )}
+                         </For>
+                       </box>
+                     </Show>
+                   </box>
+                 )}
+               </Show>
             </scrollbox>
             <box flexShrink={0}>
               <Show when={permissions().length > 0}>
@@ -1518,6 +1532,7 @@ const PART_MAPPING = {
   text: TextPart,
   tool: ToolPart,
   reasoning: ReasoningPart,
+  team_round: TeamRoundPartDisplay,
 }
 
 function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: AssistantMessage }) {
@@ -1548,6 +1563,28 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
           conceal={ctx.conceal()}
           fg={theme.textMuted}
         />
+      </box>
+    </Show>
+  )
+}
+
+function TeamRoundPartDisplay(props: { last: boolean; part: TeamRoundPart; message: AssistantMessage }) {
+  const { theme, subtleSyntax } = useTheme()
+  const done = createMemo(() => typeof props.message.time.completed === "number")
+  return (
+    <Show when={done() && props.part.text?.trim()}>
+      <box paddingLeft={3} marginTop={1} flexDirection="column">
+        <text fg={theme.textMuted}>── Round {props.part.round} ──</text>
+        <box paddingLeft={2} paddingTop={0}>
+          <code
+            filetype="markdown"
+            drawUnstyledText={false}
+            streaming={false}
+            syntaxStyle={subtleSyntax()}
+            content={props.part.text.trim()}
+            fg={theme.textMuted}
+          />
+        </box>
       </box>
     </Show>
   )

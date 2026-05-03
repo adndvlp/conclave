@@ -487,8 +487,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       },
       create(name: string) {
         const id = teamStore.nextId
-        setTeamStore("teams", (prev) => [...prev, { name: name || `Team ${id}`, members: [] }])
-        setTeamStore("active", teamStore.teams.length)
+        let newIndex = 0
+        setTeamStore("teams", (prev) => {
+          newIndex = prev.length
+          return [...prev, { name: name || `Team ${id}`, members: [] }]
+        })
+        setTeamStore("active", newIndex)
         setTeamStore("nextId", id + 1)
         saveTeam()
       },
