@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "conclave",
-  "version": "0.9.9",
+  "version": "1.0.0",
   "description": "Conclave — Multi-LLM collaborative coding agent. Fork of OpenCode.",
   "private": true,
   "type": "module",
