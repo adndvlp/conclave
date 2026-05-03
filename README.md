@@ -1,7 +1,7 @@
 <p align="center">
   <h1>🔑 Conclave</h1>
 </p>
-<p align="center"><strong>Multi-LLM collaborative coding agent.</strong></p>
+<p align="center"><strong>Experimental multi-LLM collaborative research project. Not production-ready.</strong></p>
 <p align="center">
   <a href="https://github.com/adndvlp/conclave/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/adndvlp/conclave/publish.yml?style=flat-square&branch=main" /></a>
   <a href="https://github.com/adndvlp/conclave"><img alt="GitHub" src="https://img.shields.io/github/stars/adndvlp/conclave?style=flat-square" /></a>
@@ -10,7 +10,9 @@
 
 ---
 
-Configure a team of AI models, and they deliberate in structured rounds — proposing, challenging, and building on each other's ideas — before the winner implements the solution.
+> ⚠️ **Experimental** — This is a research project exploring whether multi-LLM team debates improve code quality. Expect bugs, breaking changes, and undocumented behavior. Not recommended for production use.
+
+An experiment: put multiple LLMs in a room, let them debate your coding task, and see if the team produces better results than any single model alone.
 
 ### Installation
 
@@ -26,12 +28,12 @@ bun install
 bun run dev
 ```
 
-### How It Works
+### What It Explores
 
 1. **You ask** — "Build an auth system"
 2. **Team debates** — Models deliberate in parallel rounds with LEAD, SUPPORT, ALIGN, BUILD, CHALLENGE signals
 3. **Converges** — Winner selected by endorsement score, not context window size
-4. **Implements** — Winner generates the production code
+4. **Implements** — Winner generates the code
 
 ```
 Conclave 1 (2 models)
@@ -43,7 +45,7 @@ Team debating · Round 1/3
 Converged — DeepSeek V4 Flash implements
 ```
 
-### Key Features
+### Experimental Features
 
 - **Multi-LLM team debates** — signal-based consensus with minimum 2 rounds
 - **Breaking Teams** — LLMs autonomously split into sub-teams for parallel work
