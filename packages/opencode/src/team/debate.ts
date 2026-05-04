@@ -179,7 +179,8 @@ function callParticipant(
             signal: parseSignal(accumulated, opts.round, opts.isGlobal ?? false),
           }),
         )
-      } catch {
+      } catch (err) {
+        console.error(`Error executing model ${p.model.id}:`, err)
         resume(Effect.succeed({ participant: p, text: "", signal: null }))
       }
     })()

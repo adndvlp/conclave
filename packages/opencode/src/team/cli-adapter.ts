@@ -31,7 +31,7 @@ export function cliSyntheticModel(providerID: string, modelID: string, displayNa
     limit: { context: 1000, output: 8192 },
     capabilities: {
       temperature: false,
-      reasoning: false,
+      reasoning: true,
       attachment: false,
       toolcall: false,
       input: { text: true, audio: false, image: false, video: false, pdf: false },
@@ -140,18 +140,20 @@ export async function callClaude(
 ): Promise<string> {
   const { system, user } = buildCliPrompt(messages)
 
+  const effortMatch = modelId?.match(/-([a-z]+)$/)
+  const validEfforts = ["low", "medium", "high", "xhigh", "max"]
+  const effort = effortMatch && validEfforts.includes(effortMatch[1]) ? effortMatch[1] : null
+  const baseModel = effort && modelId ? modelId.replace(/-[a-z]+$/, "") : modelId
+
   const args: string[] = [
     "-p", user,
     "--tools", "",
-    "--bare",
     "--output-format", "stream-json",
     "--verbose",
   ]
+  if (baseModel) args.push("--model", baseModel)
   if (system) args.push("--system-prompt", system)
-  const effortMatch = modelId?.match(/-([a-z]+)$/)
-  if (effortMatch && ["low", "medium", "high", "xhigh", "max"].includes(effortMatch[1])) {
-    args.push("--effort", effortMatch[1])
-  }
+  if (effort) args.push("--effort", effort)
 
   const proc = spawn([bin, ...args], { stdout: "pipe", stderr: "ignore" })
 
@@ -250,16 +252,19 @@ export async function callClaudeAgent(
 ): Promise<string> {
   const { system, user } = buildCliPrompt(messages)
 
+  const effortMatch = modelId?.match(/-([a-z]+)$/)
+  const validEfforts = ["low", "medium", "high", "xhigh", "max"]
+  const effort = effortMatch && validEfforts.includes(effortMatch[1]) ? effortMatch[1] : null
+  const baseModel = effort && modelId ? modelId.replace(/-[a-z]+$/, "") : modelId
+
   const args: string[] = [
     "-p", user,
     "--output-format", "stream-json",
     "--verbose",
   ]
+  if (baseModel) args.push("--model", baseModel)
   if (system) args.push("--system-prompt", system)
-  const effortMatch = modelId?.match(/-([a-z]+)$/)
-  if (effortMatch && ["low", "medium", "high", "xhigh", "max"].includes(effortMatch[1])) {
-    args.push("--effort", effortMatch[1])
-  }
+  if (effort) args.push("--effort", effort)
 
   const proc = spawn([bin, ...args], { stdout: "pipe", stderr: "ignore" })
 
@@ -316,18 +321,29 @@ export async function callCodex(
 
   const args: string[] = []
   if (effort) args.push("-c", `model_reasoning_effort=${effort}`)
-  args.push("exec", fullPrompt, "--model", baseModel)
+  args.push("exec", fullPrompt, "--model", baseModel, "--json")
 
   const proc = spawn([bin, ...args], { stdout: "pipe", stderr: "ignore" })
 
   if (!proc.stdout) throw new Error("codex: no stdout")
 
   let accumulated = ""
+  let buf = ""
 
   for await (const rawChunk of proc.stdout) {
-    const text = (rawChunk as Buffer).toString()
-    accumulated += text
-    onChunk?.(accumulated)
+    buf += (rawChunk as Buffer).toString()
+    const lines = buf.split("\n")
+    buf = lines.pop() ?? ""
+    for (const line of lines) {
+      if (!line.trim()) continue
+      try {
+        const event = JSON.parse(line)
+        if (event.type === "item.completed" && event.item?.type === "agent_message" && typeof event.item.text === "string") {
+          accumulated += event.item.text
+          onChunk?.(accumulated)
+        }
+      } catch {}
+    }
   }
 
   await proc.exited
