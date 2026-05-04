@@ -321,7 +321,15 @@ export async function callCodex(
 
   const args: string[] = []
   if (effort) args.push("-c", `model_reasoning_effort=${effort}`)
-  args.push("exec", fullPrompt, "--model", baseModel, "--json")
+  args.push(
+    "exec",
+    fullPrompt,
+    "--model",
+    baseModel,
+    "--json",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--skip-git-repo-check",
+  )
 
   const proc = spawn([bin, ...args], { stdout: "pipe", stderr: "ignore" })
 
