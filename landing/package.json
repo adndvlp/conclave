@@ -12,6 +12,7 @@
     "astro": "astro"
   },
   "dependencies": {
+    "@justinribeiro/lite-youtube": "^1.9.0",
     "astro": "^6.2.1"
   }
 }

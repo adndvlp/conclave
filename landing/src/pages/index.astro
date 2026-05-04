@@ -1,6 +1,9 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <script>
+    import '@justinribeiro/lite-youtube';
+  </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="description" content="An experiment: multiple LLMs debate your coding task before implementing. Research project, not production-ready." />
@@ -127,6 +130,22 @@
       background:transparent; border-color:rgba(255,255,255,0.12); color:#c0c0d0;
     }
     .btn-outline:hover { border-color:#dc2626; color:#fff }
+
+    .hero-video-container {
+      margin: 4rem auto 0;
+      max-width: 850px;
+      width: 100%;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 40px rgba(220,38,38,0.15);
+      animation: in 0.8s ease 0.6s both;
+    }
+
+    lite-youtube {
+      width: 100%;
+      max-width: 100%;
+    }
 
     .install-box {
       display:inline-flex; align-items:center; gap:10px;
@@ -296,6 +315,10 @@
         </div>
         <a href="#how" class="btn btn-outline"><i class="fas fa-arrow-down"></i> How it works</a>
         <a href="https://github.com/adndvlp/conclave" class="btn btn-primary"><i class="fab fa-github"></i> GitHub</a>
+      </div>
+
+      <div class="hero-video-container">
+        <lite-youtube videoid="M9QDS8QP3cA" playlabel="Play Conclave Demo" autoplay params="mute=1"></lite-youtube>
       </div>
     </section>
 
