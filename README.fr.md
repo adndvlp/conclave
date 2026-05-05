@@ -1,4 +1,4 @@
-> This is a translation of the original OpenCode README. For Conclave-specific content, see the [English README](README.md).
+> This translation may be outdated. The [English README](README.md) and [docs/](docs/index.md) are the authoritative sources.
 
 <p align="center">
   <a href="https://opencode.ai">
