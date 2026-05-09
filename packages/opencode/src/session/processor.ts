@@ -22,11 +22,172 @@ import * as Log from "@opencode-ai/core/util/log"
 import { isRecord } from "@/util/record"
 import { Team } from "@/team"
 import { CLI_PROVIDER_IDS, callGeminiAgent, callClaudeAgent, callCodex } from "@/team/cli-adapter"
-import type { CliParticipant } from "@/team/debate"
+import type { CliParticipant, ApiParticipant, Participant } from "@/team/debate"
+import { buildThreadForModel } from "@/team/debate"
 import { EffectBridge } from "@/effect/bridge"
+import { streamText, generateText } from "ai"
+import { existsSync } from "fs"
+import { run } from "@/util/process"
+
+const CONCURRENT_TASK_TIMEOUT = 90_000
+const TASK_BREAKDOWN_TOKENS = 512
+const MAX_CHECK_ITERATIONS = 3
+const RATE_LIMIT_BACKOFF = [2000, 5000, 10_000]
 
 const DOOM_LOOP_THRESHOLD = 3
 const log = Log.create({ service: "session.processor" })
+
+type ImplResult = { modelName: string; teamName: string; output: string; files: string[]; implementer: ApiParticipant | CliParticipant; error?: string }
+
+async function resolveConflicts(
+  p1: ApiParticipant, p2: ApiParticipant, conflictedFiles: string[],
+  theirOutputs: string, task: string, tools: Record<string, any>,
+): Promise<string> {
+  const signal = AbortSignal.timeout(60_000)
+  try {
+    const result = streamText({
+      model: p1.language, tools, temperature: 0.2, maxSteps: 10, abortSignal: signal,
+      messages: [
+        { role: "system", content: `Resolve conflicts in: ${conflictedFiles.join(", ")}. Merge the best parts.` },
+        { role: "user", content: `TASK: ${task.slice(0, 1000)}\n\nIMPLEMENTATIONS:\n${theirOutputs.slice(0, 6000)}\n\nResolve conflicts in: ${conflictedFiles.join(", ")}. Use tools to write the resolved files.` },
+      ],
+    } as any)
+    let output = ""
+    for await (const part of result.fullStream as AsyncIterable<any>) {
+      if (part.type === "text-delta") output += part.text
+      if (part.type === "tool-call") output += `\n[TOOL: ${part.toolName}]\n`
+      if (part.type === "tool-result") output += `\n[DONE: ${part.toolName}]\n`
+    }
+    return output
+  } catch (err) { return `Conflict resolution error: ${errorMessage(err)}` }
+}
+
+function findFileConflicts(allResults: Array<{ modelName: string; teamName: string; files: string[] }>) {
+  const fileTeams = new Map<string, Set<string>>()
+  for (const r of allResults) for (const f of r.files) {
+    if (!fileTeams.has(f)) fileTeams.set(f, new Set())
+    fileTeams.get(f)!.add(r.teamName)
+  }
+  return [...fileTeams.entries()].filter(([, t]) => t.size > 1).map(([f, t]) => ({ file: f, teams: [...t] }))
+}
+
+async function generateTaskBreakdown(winner: ApiParticipant, thread: string, task: string, teamNames: string[]): Promise<string[]> {
+  const modelNames = teamNames.join(", ")
+  const prompt = `Decompose into 2-4 independent subtasks targeting DIFFERENT files. JSON array.\nDEBATE: ${thread.slice(-5000)}\nTASK: ${task.slice(0, 2000)}\nTeam: ${modelNames}\nJSON:`
+  const signal = AbortSignal.timeout(30_000)
+  try {
+    const result = await generateText({ model: winner.language as any, messages: [{ role: "user", content: prompt }] as any, maxOutputTokens: TASK_BREAKDOWN_TOKENS, temperature: 0.1, abortSignal: signal })
+    const text = result.text.trim()
+    const m = text.match(/\[[\s\S]*\]/)
+    if (m) { const p = JSON.parse(m[0]); if (Array.isArray(p)) return p.filter((t): t is string => typeof t === "string" && t.length > 0) }
+    return []
+  } catch { return [] }
+}
+
+async function runTaskImplementer(
+  p: ApiParticipant, task: string, teamLabel: string, debateThread: string, tools: Record<string, any>,
+  onChunk?: (chunk: string) => void,
+): Promise<ImplResult> {
+  // Trim debate thread to this model's context window (25% like the debate does)
+  const contextLimit = p.model.limit?.context ?? 128000
+  const trimmedThread = buildThreadForModel(debateThread, contextLimit)
+  let lastError = ""
+  for (let attempt = 0; attempt <= RATE_LIMIT_BACKOFF.length; attempt++) {
+    try {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, RATE_LIMIT_BACKOFF[attempt - 1]))
+      const signal = AbortSignal.timeout(CONCURRENT_TASK_TIMEOUT)
+      const result = streamText({
+        model: p.language, tools, temperature: 0.2, maxSteps: 15, abortSignal: signal,
+        messages: [
+          { role: "system", content: `You are ${p.model.name}. Implement using tools.` },
+          { role: "user", content: `${task}\n\nContext: ${trimmedThread.slice(-3000)}${lastError ? `\n\nFix: ${lastError}` : ""}` },
+        ],
+      } as any)
+      let output = ""
+      const files = new Set<string>()
+      for await (const part of result.fullStream as AsyncIterable<any>) {
+        if (part.type === "text-delta") {
+          output += part.text
+          onChunk?.(part.text)
+        }
+        if (part.type === "tool-call") output += `\n[TOOL: ${part.toolName}]\n${JSON.stringify(part.input, null, 2)}\n`
+        if (part.type === "tool-result") {
+          output += `\n[DONE: ${part.toolName}]\n${JSON.stringify(part.output).slice(0, 300)}\n`
+          if (part.toolName === "write" || part.toolName === "edit") {
+            const inp = part.input as any
+            const fp = inp?.filePath || inp?.path || inp?.file
+            if (fp) files.add(fp)
+          }
+        }
+      }
+      return { modelName: p.model.name, teamName: teamLabel, output, files: [...files], implementer: p }
+    } catch (err) {
+      const msg = errorMessage(err)
+      if (/rate.limit|429|too many requests/i.test(msg) && attempt < RATE_LIMIT_BACKOFF.length) { lastError = `Rate limited (attempt ${attempt + 1})`; continue }
+      return { modelName: p.model.name, teamName: teamLabel, output: `Error: ${msg}`, files: [], implementer: p, error: msg }
+    }
+  }
+  return { modelName: p.model.name, teamName: teamLabel, output: `Error: ${lastError}`, files: [], implementer: p, error: lastError }
+}
+
+async function detectCheckCommand(): Promise<string | null> {
+  if (existsSync("tsconfig.json")) return "npx tsc --noEmit"
+  if (existsSync("package.json")) {
+    try { const pkg = JSON.parse(await Bun.file("package.json").text()); if (pkg.scripts?.typecheck) return `npx ${pkg.scripts.typecheck}`; if (pkg.scripts?.lint) return `npx ${pkg.scripts.lint}` } catch {}
+  }
+  if (existsSync("Cargo.toml")) return "cargo check"
+  if (existsSync("go.mod")) return "go build ./..."
+  return null
+}
+
+async function runProjectCheck(): Promise<{ passed: boolean; errors: string; errorFiles: string[] }> {
+  const cmdStr = await detectCheckCommand()
+  if (!cmdStr) return { passed: true, errors: "", errorFiles: [] }
+  try { await run(cmdStr.split(" "), { timeout: 45_000 }); return { passed: true, errors: "", errorFiles: [] } }
+  catch (err: any) {
+    const stderr = err?.stderr ? Buffer.from(err.stderr).toString() : ""
+    const stdout = err?.stdout ? Buffer.from(err.stdout).toString() : ""
+    return { passed: false, errors: stderr || stdout || String(err), errorFiles: parseErrorFiles(stderr || stdout || String(err)) }
+  }
+}
+
+function parseErrorFiles(checkOutput: string): string[] {
+  const files = new Set<string>()
+  const p = /^(.+?)\(\d+,\d+\):/gm
+  let m; while ((m = p.exec(checkOutput)) !== null) files.add(m[1].trim())
+  if (files.size === 0) { const bp = /([^\s:"]+\.(?:ts|tsx|js|jsx|py|rs|go|java|rb|php|sql|yaml|yml|json|md|html|css|toml))\s*:/gi; let bm; while ((bm = bp.exec(checkOutput)) !== null) files.add(bm[1].trim()) }
+  return [...files]
+}
+
+async function checkAndFixLoop(
+  results: ImplResult[], debateThread: string, taskStr: string, tools: Record<string, any>,
+  fallbackImpl: Map<string, ApiParticipant>,
+): Promise<{ results: ImplResult[]; iterations: number; lastErrors: string }> {
+  let lastErrors = ""
+  let iteration = 0
+  for (iteration = 1; iteration <= MAX_CHECK_ITERATIONS; iteration++) {
+    const check = await runProjectCheck()
+    if (check.passed) break
+    if (check.errorFiles.length === 0) break
+    lastErrors = check.errors
+    const fixTargets = new Map<string, ImplResult>()
+    for (const ef of check.errorFiles) {
+      for (const r of results) {
+        if (r.files.some((f) => f.endsWith(ef) || ef.endsWith(f.split("/").pop()!))) fixTargets.set(r.teamName, r)
+      }
+    }
+    if (fixTargets.size === 0) break
+    const fixes = await Promise.all([...fixTargets.values()].map((r) => {
+      let impl: ApiParticipant | null = r.implementer.kind === "api" ? r.implementer : null
+      if (r.error) impl = fallbackImpl.get(r.teamName) ?? null
+      if (!impl) return Promise.resolve({ ...r, output: `${r.output}\n(No implementer for fix)`, files: r.files })
+      const fixCtx = `PREVIOUS ATTEMPT${r.error ? ` (FAILED: ${r.error})` : ""}:\n${r.output.slice(0, 3000)}\n\nCHECK ERRORS:\n${check.errors.slice(0, 3000)}\n\nFix all errors. Read files, understand what was done, and complete or correct.`
+      return runTaskImplementer(impl, fixCtx, `${r.teamName} (fix #${iteration})`, debateThread, tools)
+    }))
+    for (const fix of fixes) { const idx = results.findIndex((r) => r.teamName === fix.teamName); if (idx >= 0) results[idx] = fix }
+  }
+  return { results, iterations: iteration - 1, lastErrors }
+}
 
 export type Result = "compact" | "stop" | "continue"
 
@@ -548,48 +709,237 @@ export const layer: Layer.Layer<
         ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
 
         // Run team debate — if team is enabled, find implementer and swap model
-        slog.info("process")
-        const onRoundComplete = (round: number, roundText: string) =>
-          Effect.gen(function* () {
-            const now = Date.now()
-            yield* session.updatePart({
-              id: PartID.ascending(),
-              messageID: ctx.assistantMessage.id,
-              sessionID: ctx.assistantMessage.sessionID,
-              type: "team_round" as const,
-              round,
-              text: roundText,
-              time: { start: now, end: now },
-            })
-          })
+        // Accumulate ALL previous team threads so context grows across turns
+        let previousThread = ""
+        for (const msg of streamInput.messages) {
+          if (msg.role !== "assistant") continue
+          const raw = msg.content
+          const content = typeof raw === "string" ? raw : Array.isArray(raw) ? raw.filter((p: any) => p.type === "text").map((p: any) => p.text).join("\n") : ""
+          const matches = [...content.matchAll(/### Team Discussion\n\n([\s\S]*?)(?=\n\n### Team Discussion|\n\n### (?!Team Discussion)|$)/g)]
+          for (const m of matches) {
+            const t = m[1].trim()
+            if (t) previousThread = previousThread ? `${previousThread}\n\n${t}` : t
+          }
+        }
 
-        const teamModel = yield* team.run(streamInput, ctx.sessionID, onRoundComplete).pipe(
+        const teamModel = yield* team.run(streamInput, ctx.sessionID, ctx.assistantMessage.id, previousThread || undefined).pipe(
           Effect.orElseSucceed(() => Option.none()),
         )
-        let finalInput: LLM.StreamInput
+        let finalInput: LLM.StreamInput = streamInput
         let cliImplementer: CliParticipant | null = null
+        let concurrentDone = false
         if (Option.isSome(teamModel)) {
-          const { participant, thread: _thread } = teamModel.value
+          const { participant, orderedParticipants, thread, subTeamImplementers } = teamModel.value
           const model = participant.model
-          if (CLI_PROVIDER_IDS.has(model.providerID)) {
-            slog.info("team.implementer.cli", { modelID: model.id, providerID: model.providerID })
-            cliImplementer = participant as CliParticipant
-            ctx.assistantMessage.modelID = model.id
-            ctx.assistantMessage.providerID = model.providerID
-            ctx.model = model
-            yield* session.updateMessage(ctx.assistantMessage)
-            finalInput = streamInput
-          } else {
-            slog.info("team.implementer", { modelID: model.id, providerID: model.providerID })
-            ctx.assistantMessage.modelID = model.id
-            ctx.assistantMessage.providerID = model.providerID
-            ctx.model = model
-            yield* session.updateMessage(ctx.assistantMessage)
-            finalInput = { ...streamInput, model }
+
+          const lastUserMsg = [...streamInput.messages].reverse().find((m) => m.role === "user")
+          let taskStr = ""
+          let fullContext = ""
+          if (lastUserMsg) {
+            const c = lastUserMsg.content
+            if (typeof c === "string") taskStr = c
+            else if (Array.isArray(c)) taskStr = c.filter((p: any) => p.type === "text").map((p: any) => p.text as string).join("\n")
           }
-        } else {
-          finalInput = streamInput
+          // Build full conversation context from ALL messages (multiple turns)
+          for (const msg of streamInput.messages) {
+            if (msg.role === "user") {
+              const content = typeof msg.content === "string" ? msg.content : Array.isArray(msg.content) ? msg.content.filter((p: any) => p.type === "text").map((p: any) => p.text).join("") : ""
+              if (content) fullContext += `\n[USER]: ${content.slice(0, 2000)}`
+            } else if (msg.role === "assistant") {
+              const content = typeof msg.content === "string" ? msg.content : ""
+              if (content) fullContext += `\n[ASSISTANT]: ${content.slice(0, 1000)}`
+            }
+          }
+          if (fullContext) taskStr = `PREVIOUS CONVERSATION:\n${fullContext}\n\nCURRENT TASK:\n${taskStr}`
+
+          if (subTeamImplementers && subTeamImplementers.length > 0) {
+            slog.info("team.concurrent.subteams", { count: subTeamImplementers.length })
+            yield* status.set(ctx.sessionID as any, { type: "busy" })
+
+            // Build fallback map: teamName -> alternative API participant
+            const apiPool = orderedParticipants.filter((p): p is ApiParticipant => p.kind === "api")
+            const fallbackImpl = new Map<string, ApiParticipant>()
+            for (const sti of subTeamImplementers) {
+              if (sti.implementer.kind === "api" && apiPool.length > 1) {
+                const fallback = apiPool.find((p) => p.model.id !== sti.implementer.model.id && sti.memberIDs.includes(p.model.id))
+                if (fallback) fallbackImpl.set(sti.subTeamName, fallback)
+              }
+              if (!fallbackImpl.has(sti.subTeamName) && apiPool.length > 0) {
+                const anyOther = apiPool.find((p) => p.model.id !== (sti.implementer.kind === "api" ? sti.implementer.model.id : ""))
+                if (anyOther) fallbackImpl.set(sti.subTeamName, anyOther)
+              }
+            }
+
+            // Create text parts for real-time streaming BEFORE running tasks
+            const subTeamPartIDs = new Map<string, string>()
+            for (const sti of subTeamImplementers) {
+              if (sti.implementer.kind !== "api") continue
+              const partID = PartID.ascending()
+              subTeamPartIDs.set(sti.subTeamName, partID as string)
+              yield* session.updatePart({
+                id: partID, messageID: ctx.assistantMessage.id,
+                sessionID: ctx.assistantMessage.sessionID, type: "text",
+                text: `## ${sti.subTeamName} (${sti.implementer.model.name})\n`,
+                time: { start: Date.now() },
+              })
+            }
+
+            const bridge = yield* EffectBridge.make()
+
+            const subTeamResults: ImplResult[] = yield* Effect.all(
+              subTeamImplementers.map((sti) => {
+                const impl = sti.implementer
+                if (impl.kind !== "api") return Effect.succeed({ modelName: impl.model.name, teamName: sti.subTeamName, output: "(CLI)", files: [] as string[], implementer: impl } satisfies ImplResult)
+                const rawPartID = subTeamPartIDs.get(sti.subTeamName)
+                const partID = rawPartID as string | undefined
+                return Effect.promise(() =>
+                  runTaskImplementer(impl,
+                    `SUB-TEAM DEBATE:\n${sti.thread.slice(-3000)}\n\nSub-team: ${sti.subTeamName}\nFocus: ${sti.focus}\nFull task: ${taskStr}`,
+                    sti.subTeamName, thread, streamInput.tools,
+                    partID ? (chunk: string) => {
+                      bridge.fork(session.updatePartDelta({
+                        sessionID: ctx.assistantMessage.sessionID,
+                        messageID: ctx.assistantMessage.id,
+                        partID: partID as any, field: "text" as const, delta: chunk,
+                      }))
+                    } : undefined,
+                  ),
+                )
+              }),
+              { concurrency: "unbounded" },
+            )
+
+            // Finalize text parts with completed text
+            for (const r of subTeamResults) {
+              const rawPartID = subTeamPartIDs.get(r.teamName)
+              if (rawPartID) {
+                const now = Date.now()
+                bridge.fork(session.updatePart({
+                  id: rawPartID as any, messageID: ctx.assistantMessage.id,
+                  sessionID: ctx.assistantMessage.sessionID, type: "text",
+                  text: `## ${r.teamName} (${r.modelName})\n${r.output}`,
+                  time: { start: now, end: now },
+                }))
+              }
+            }
+
+            // If a sub-team's implementer failed, try fallback with full context
+            for (const r of subTeamResults) {
+              if (r.error && r.implementer.kind === "api") {
+                const fb = fallbackImpl.get(r.teamName)
+                if (fb) {
+                  const sti = subTeamImplementers.find((s) => s.subTeamName === r.teamName)
+                  slog.info("team.concurrent.fallback", { team: r.teamName, fallback: fb.model.name, failedOutput: r.output.slice(0, 100) })
+                  // Pass the failed LLM's output + sub-team's internal debate thread as context
+                  const fbContext = `PREVIOUS ATTEMPT (FAILED: ${r.error}):\n${r.output.slice(0, 3000)}\n\nSUB-TEAM DEBATE:\n${(sti?.thread ?? "").slice(-4000)}\n\nYOUR TASK:\nSub-team: ${r.teamName}\nFocus: ${sti?.focus ?? ""}\nFull task: ${taskStr}\n\nContinue from where the previous implementer failed. Read existing files, fix or complete them.`
+                  const fbResult = yield* Effect.promise(() =>
+                    runTaskImplementer(fb, fbContext, `${r.teamName} (fallback)`, thread, streamInput.tools),
+                  )
+                  // Record fallback in session memory
+                  const now = Date.now()
+                  yield* session.updatePart({ id: PartID.ascending(), messageID: ctx.assistantMessage.id, sessionID: ctx.assistantMessage.sessionID, type: "text", text: `### Fallback: ${r.teamName}\n**${r.modelName}** failed (${r.error}) → **${fb.model.name}** took over\n\nPrevious output:\n\`\`\`\n${r.output.slice(0, 500)}\n\`\`\``, time: { start: now, end: now } })
+                  const idx = subTeamResults.findIndex((sr) => sr.teamName === r.teamName)
+                  if (idx >= 0) subTeamResults[idx] = fbResult
+                }
+              }
+            }
+            const conflicts = findFileConflicts(subTeamResults)
+            if (conflicts.length > 0) {
+              slog.info("team.concurrent.conflicts", { count: conflicts.length, files: conflicts.map((c) => c.file) })
+              for (const conflict of conflicts) {
+                const involved = subTeamResults.filter((r) => conflict.teams.includes(r.teamName))
+                const apiP = orderedParticipants.filter((p): p is ApiParticipant => p.kind === "api")
+                if (apiP.length < 2) continue
+                const combined = involved.map((r) => `=== ${r.teamName} (${r.modelName}) ===\n${r.output}`).join("\n\n")
+                yield* Effect.promise(() => resolveConflicts(apiP[0], apiP[1] || apiP[0], [conflict.file], combined, taskStr, streamInput.tools)).pipe(Effect.orElseSucceed(() => ""))
+              }
+            }
+            const checkResult = yield* Effect.promise(() => checkAndFixLoop(subTeamResults, thread, taskStr, streamInput.tools, fallbackImpl))
+            if (checkResult.iterations > 0) {
+              const now = Date.now()
+              yield* session.updatePart({ id: PartID.ascending(), messageID: ctx.assistantMessage.id, sessionID: ctx.assistantMessage.sessionID, type: "text", text: `### Automated checks: ${checkResult.iterations} iteration(s)\nErrors fixed by sub-teams.\n\n\`\`\`\n${checkResult.lastErrors.slice(0, 1500)}\n\`\`\``, time: { start: now, end: now } })
+            }
+            ctx.assistantMessage.modelID = model.id
+            ctx.assistantMessage.providerID = model.providerID
+            ctx.assistantMessage.time.completed = Date.now()
+            yield* session.updateMessage(ctx.assistantMessage)
+            yield* status.set(ctx.sessionID, { type: "idle" })
+            concurrentDone = true
+          }
+
+          if (!concurrentDone && orderedParticipants.length > 1) {
+            const apiP = orderedParticipants.filter((p): p is ApiParticipant => p.kind === "api")
+            if (apiP.length >= 2) {
+              const tasks = yield* Effect.promise(() => generateTaskBreakdown(apiP[0], thread, taskStr, orderedParticipants.map((p) => p.model.name))).pipe(Effect.orElseSucceed(() => [] as string[]))
+              if (tasks.length > 0) {
+                slog.info("team.concurrent.tasks", { count: tasks.length })
+                const assignments: Array<{ p: ApiParticipant; task: string; label: string }> = []
+                for (let i = 0; i < tasks.length; i++) assignments.push({ p: apiP[i % apiP.length], task: tasks[i], label: apiP[i % apiP.length].model.name })
+                const taskResults: ImplResult[] = yield* Effect.all(
+                  assignments.map(({ p, task, label }) => Effect.promise(() => runTaskImplementer(p, task, label, thread, streamInput.tools))),
+                  { concurrency: "unbounded" },
+                )
+                // Fallback: if a task implementer failed, try another participant with full context
+                for (const r of taskResults) {
+                  if (r.error && r.implementer.kind === "api") {
+                    const fb = apiP.find((p) => p.model.id !== r.implementer.model.id)
+                    if (fb) {
+                      slog.info("team.concurrent.fallback", { team: r.teamName, fallback: fb.model.name, failedOutput: r.output.slice(0, 100) })
+                      const origTask = assignments.find((a) => a.label === r.teamName)
+                      const fbContext = `PREVIOUS ATTEMPT (FAILED: ${r.error}):\n${r.output.slice(0, 3000)}\n\nCONTINUE FROM FAILURE:\n${origTask?.task ?? r.teamName}\n\nRead existing files, fix or complete them.`
+                      const fbResult = yield* Effect.promise(() => runTaskImplementer(fb, fbContext, `${r.teamName} (fallback)`, thread, streamInput.tools))
+                      const now = Date.now()
+                      yield* session.updatePart({ id: PartID.ascending(), messageID: ctx.assistantMessage.id, sessionID: ctx.assistantMessage.sessionID, type: "text", text: `### Fallback: ${r.teamName}\n**${r.modelName}** failed (${r.error}) → **${fb.model.name}** took over`, time: { start: now, end: now } })
+                      const idx = taskResults.findIndex((sr) => sr.teamName === r.teamName)
+                      if (idx >= 0) taskResults[idx] = fbResult
+                    }
+                  }
+                }
+                const taskFallback = new Map<string, ApiParticipant>()
+                for (const a of assignments) {
+                  taskFallback.set(a.label, apiP.find((p) => p.model.id !== a.p.model.id) ?? a.p)
+                }
+                const conflicts = findFileConflicts(taskResults)
+                if (conflicts.length > 0) slog.info("team.concurrent.conflicts", { count: conflicts.length })
+                const checkResult = yield* Effect.promise(() => checkAndFixLoop(taskResults, thread, taskStr, streamInput.tools, taskFallback))
+                if (checkResult.iterations > 0) {
+                  const now = Date.now()
+                  yield* session.updatePart({ id: PartID.ascending(), messageID: ctx.assistantMessage.id, sessionID: ctx.assistantMessage.sessionID, type: "text", text: `### Checks: ${checkResult.iterations} iteration(s)\n\`\`\`\n${checkResult.lastErrors.slice(0, 1500)}\n\`\`\``, time: { start: now, end: now } })
+                }
+                const allText = checkResult.results.map((r) => `## ${r.teamName}\n${r.output}`).join("\n\n---\n\n")
+                const now = Date.now()
+                yield* session.updatePart({ id: PartID.ascending(), messageID: ctx.assistantMessage.id, sessionID: ctx.assistantMessage.sessionID, type: "text", text: `## Concurrent Team Implementation\n\n${allText}`, time: { start: now, end: now } })
+                ctx.assistantMessage.modelID = model.id
+                ctx.assistantMessage.providerID = model.providerID
+                ctx.assistantMessage.time.completed = Date.now()
+                yield* session.updateMessage(ctx.assistantMessage)
+                yield* status.set(ctx.sessionID, { type: "idle" })
+                concurrentDone = true
+              }
+            }
+          }
+
+          if (!concurrentDone) {
+            if (CLI_PROVIDER_IDS.has(model.providerID)) {
+              slog.info("team.implementer.cli", { modelID: model.id, providerID: model.providerID })
+              cliImplementer = participant as CliParticipant
+              ctx.assistantMessage.modelID = model.id
+              ctx.assistantMessage.providerID = model.providerID
+              ctx.model = model
+              yield* session.updateMessage(ctx.assistantMessage)
+              finalInput = streamInput
+            } else {
+              slog.info("team.implementer", { modelID: model.id, providerID: model.providerID })
+              ctx.assistantMessage.modelID = model.id
+              ctx.assistantMessage.providerID = model.providerID
+              ctx.model = model
+              yield* session.updateMessage(ctx.assistantMessage)
+              finalInput = { ...streamInput, model }
+            }
+          }
         }
+
+        if (concurrentDone) return "stop" as const
 
         // CLI implementation path — run agentic CLI subprocess directly
         if (cliImplementer) {
@@ -696,7 +1046,13 @@ export const layer: Layer.Layer<
             Effect.ensuring(cleanup()),
           )
 
-          if (ctx.needsCompaction) return "compact"
+          if (ctx.needsCompaction) {
+            if (streamInput.user.team?.length) {
+              ctx.needsCompaction = false
+              return "continue"
+            }
+            return "compact"
+          }
           if (ctx.blocked || ctx.assistantMessage.error) return "stop"
           return "continue"
         })

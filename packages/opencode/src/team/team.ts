@@ -2,7 +2,9 @@ import { Effect, Layer, Context, Option } from "effect"
 import * as Log from "@opencode-ai/core/util/log"
 import { Provider } from "@/provider/provider"
 import { SessionStatus } from "@/session/status"
-import { runBreakingTeams, type Participant, type RoundSignal } from "./debate"
+import { Session } from "@/session/session"
+import { PartID } from "@/session/schema"
+import { runBreakingTeams, type Participant, type RoundSignal, type SubTeamImplementer } from "./debate"
 import { CLI_PROVIDER_IDS, cliSyntheticModel, detectCli } from "./cli-adapter"
 import { EffectBridge } from "@/effect/bridge"
 import type { LLM } from "@/session/llm"
@@ -16,8 +18,14 @@ export interface Interface {
   readonly run: (
     streamInput: LLM.StreamInput,
     sessionID: string,
-    onRoundComplete?: (round: number, roundText: string) => Effect.Effect<void>,
-  ) => Effect.Effect<Option.Option<{ participant: Participant; thread: string }>>
+    messageID: string,
+    initialThread?: string,
+  ) => Effect.Effect<Option.Option<{
+    participant: Participant
+    orderedParticipants: Participant[]
+    subTeamImplementers: SubTeamImplementer[]
+    thread: string
+  }>>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Team") {}
@@ -35,22 +43,40 @@ function extractTask(messages: ModelMessage[]): string {
   return ""
 }
 
+function buildFullContext(messages: ModelMessage[]): string {
+  const parts: string[] = []
+  for (const msg of messages) {
+    if (msg.role === "user") {
+      const content = typeof msg.content === "string" ? msg.content : Array.isArray(msg.content) ? msg.content.filter((p: any) => p.type === "text").map((p: any) => p.text).join("") : ""
+      if (content) parts.push(content.slice(0, 2000))
+    }
+  }
+  return parts.join("\n\n")
+}
+
 export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const provider = yield* Provider.Service
     const status = yield* SessionStatus.Service
+    const session = yield* Session.Service
 
     const run = Effect.fn("Team.run")(function* (
       streamInput: LLM.StreamInput,
       sessionID: string,
-      onRoundComplete?: (round: number, roundText: string) => Effect.Effect<void>,
+      messageID: string,
+      initialThread?: string,
     ) {
       const members = streamInput.user.team
-      let result: Option.Option<{ participant: Participant; thread: string }> = Option.none()
+      let result: Option.Option<{ participant: Participant; orderedParticipants: Participant[]; subTeamImplementers: SubTeamImplementer[]; thread: string }> = Option.none()
 
       if (members && members.length >= 2) {
         const task = extractTask(streamInput.messages)
+        const fullContext = buildFullContext(streamInput.messages)
+        // Include previous team discussion thread if available
+        const previousThread = initialThread ? `PREVIOUS TEAM DISCUSSION:\n${initialThread}\n\n` : ""
+        // Prepend full conversation history so debate participants know what happened before
+        const taskWithContext = `${previousThread}PREVIOUS CONVERSATION:\n${fullContext}\n\nCURRENT TASK:\n${task}`
 
         const resolved = yield* Effect.all(
           members.map(({ providerID, modelID }) =>
@@ -105,47 +131,48 @@ export const layer = Layer.effect(
             subTeams: [],
           })
 
-          // Bridge for calling Effects from async/Promise callbacks
+          // Create reasoning parts per participant (same pattern as single-model reasoning)
+          const participantPartIDs = new Map<string, string>()
+          const participantPrevLen = new Map<string, number>()
+          const sid: any = sessionID
+          const mid: any = messageID
+
+          // Round header — appears once above all reasoning toggles
+          yield* session.updatePart({
+            id: PartID.ascending(), messageID: mid, sessionID: sid, type: "text" as const,
+            text: `### Debate · Round 1 / ${maxRounds}`,
+            time: { start: Date.now() },
+          } as any)
+
+          for (const p of participants) {
+            const partID = PartID.ascending()
+            participantPartIDs.set(p.model.name, partID as string)
+            participantPrevLen.set(p.model.name, 0)
+            yield* session.updatePart({
+              id: partID, messageID: mid, sessionID: sid, type: "reasoning" as const,
+              text: `### ${p.model.name}\n`,
+              time: { start: Date.now() },
+            } as any)
+          }
+
           const bridge = yield* EffectBridge.make()
 
-          // Per-participant accumulated streaming text
-          const participantTexts = new Map<string, { text: string; round: number }>()
-          let lastChunkEmit = 0
-          let chunkTimeout: NodeJS.Timeout | null = null
-
           const onParticipantChunk = (modelName: string, text: string, round: number) => {
-            participantTexts.set(modelName, { text, round })
-            const now = Date.now()
-
-            const flush = () => {
-              lastChunkEmit = Date.now()
-              if (chunkTimeout) {
-                clearTimeout(chunkTimeout)
-                chunkTimeout = null
+            // Stream delta to reasoning part (same as single-model reasoning-delta)
+            const pid = participantPartIDs.get(modelName)
+            const prevLen = participantPrevLen.get(modelName) ?? 0
+            if (pid) {
+              const delta = text.slice(prevLen)
+              participantPrevLen.set(modelName, text.length)
+              if (delta) {
+                bridge.fork(
+                  session.updatePartDelta({
+                    sessionID: sid, messageID: mid,
+                    partID: pid as any, field: "text" as const, delta,
+                  } as any),
+                )
               }
-              bridge.fork(
-                Effect.gen(function* () {
-                  const current = yield* status.get(sessionID as any)
-                  if (current.type !== "team.breaking") return
-                  yield* status.set(sessionID as any, {
-                    ...current,
-                    participantStreams: Array.from(participantTexts.entries()).map(([name, d]) => ({
-                      modelName: name,
-                      text: d.text,
-                      round: d.round,
-                    })),
-                  })
-                }),
-              )
             }
-
-            if (now - lastChunkEmit < 250) {
-              if (!chunkTimeout) {
-                chunkTimeout = setTimeout(flush, 250 - (now - lastChunkEmit))
-              }
-              return
-            }
-            flush()
           }
 
           const onBreakingProgress = (
@@ -159,24 +186,22 @@ export const layer = Layer.effect(
             globalRoundNum: number,
           ) =>
             Effect.gen(function* () {
-              const current = yield* status.get(sessionID as any)
               yield* status.set(sessionID as any, {
                 type: "team.breaking",
                 globalRound: globalRoundNum,
                 subTeams: subTeamsInfo,
-                participantStreams: current.type === "team.breaking" ? current.participantStreams : undefined,
               })
             })
 
           const debateResult = yield* runBreakingTeams(
             participants,
-            task,
+            taskWithContext,
+            initialThread || "",
             maxRounds,
             minRounds,
             maxSubTeams,
             globalRoundInterval,
             onBreakingProgress,
-            onRoundComplete,
             onParticipantChunk,
           )
 
@@ -185,10 +210,27 @@ export const layer = Layer.effect(
             converged: debateResult.converged,
             globalRounds: debateResult.globalRounds,
             subTeams: debateResult.subTeams.length,
+            participants: debateResult.orderedParticipants.map((p) => p.model.id),
           })
 
+          // Persist team thread for next turn (as text part so it converts to ModelMessage)
+          if (debateResult.thread.trim()) {
+            yield* session.updatePart({
+              id: PartID.ascending(), messageID: messageID as any, sessionID: sessionID as any,
+              type: "text" as const,
+              text: `### Team Discussion\n\n${debateResult.thread}`,
+              time: { start: Date.now(), end: Date.now() },
+              metadata: { team_thread: true },
+            } as any)
+          }
+
           yield* status.set(sessionID as any, { type: "busy" })
-          result = Option.some({ participant: debateResult.implementer, thread: debateResult.thread })
+          result = Option.some({
+            participant: debateResult.implementer,
+            orderedParticipants: debateResult.orderedParticipants,
+            subTeamImplementers: debateResult.subTeamImplementers,
+            thread: debateResult.thread,
+          })
         } else {
           log.warn("team.insufficient_members", { found: participants.length })
         }
@@ -204,4 +246,5 @@ export const layer = Layer.effect(
 export const defaultLayer = layer.pipe(
   Layer.provide(Provider.defaultLayer),
   Layer.provide(SessionStatus.defaultLayer),
+  Layer.provide(Session.defaultLayer),
 )

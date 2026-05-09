@@ -1098,13 +1098,13 @@ export function Session() {
                   foregroundColor: theme.border,
                 },
               }}
-              stickyScroll={true}
-              stickyStart="bottom"
-              flexGrow={1}
-              scrollAcceleration={scrollAcceleration()}
-            >
-               <box height={1} />
-               <For each={messages()}>
+               stickyScroll={true}
+               stickyStart="bottom"
+               flexGrow={1}
+               scrollAcceleration={scrollAcceleration()}
+             >
+                <box height={1} />
+                <For each={messages()}>
                 {(message, index) => (
                   <Switch>
                     <Match when={message.id === revert()?.messageID}>
@@ -1199,59 +1199,7 @@ export function Session() {
                   </Switch>
                 )}
               </For>
-               <Show when={debateStatus()}>
-                 {(s) => (
-                   <box paddingLeft={3} paddingBottom={1} flexDirection="column">
-                     <text fg={theme.textMuted}>
-                       {s().type === "breaking"
-                         ? `Team debating · Round ${Math.max(1, ...(s().streams?.map((st) => st.round) ?? [1]))}`
-                         : `Team debating · Round ${s().round}/${s().total}`
-                       }
-                      </text>
-                       <Show when={s().type === "breaking" || s().type === "debate"}>
-                         <box
-                           onMouseDown={(e) => {
-                             e.preventDefault()
-                             e.stopPropagation()
-                             setShowThinking((prev) => !prev)
-                           }}
-                         >
-                           <text fg={theme.accent}>
-                             {showThinking() ? "⊟ Hide reasoning" : "⊞ Show reasoning"}
-                           </text>
-                         </box>
-                       </Show>
-                      <Show when={s().type === "debate" && (s().signals?.length ?? 0) > 0}>
-                       <box paddingLeft={2} paddingTop={0} flexDirection="column">
-                         <For each={s().signals ?? []}>
-                           {(sig) => (
-                             <text fg={theme.textMuted}>
-                               {sig.model}: {sig.signal}
-                             </text>
-                           )}
-                         </For>
-                       </box>
-                     </Show>
-                     <Show when={s().type === "breaking" && (s().streams?.length ?? 0) > 0 && showThinking()}>
-                       <box paddingLeft={2} paddingTop={0} flexDirection="column">
-                         <For each={s().streams ?? []}>
-                           {(stream) => (
-                             <box flexDirection="column">
-                               <text fg={theme.textMuted}>
-                                 ▶ {stream.modelName}
-                               </text>
-                               <box paddingLeft={2} paddingBottom={1}>
-                                 <text fg={theme.textMuted}>{stream.text.trim().split("\n").slice(-5).join("\n")}</text>
-                               </box>
-                             </box>
-                           )}
-                         </For>
-                       </box>
-                     </Show>
-                   </box>
-                 )}
-               </Show>
-            </scrollbox>
+             </scrollbox>
             <box flexShrink={0}>
               <Show when={permissions().length > 0}>
                 <PermissionPrompt request={permissions()[0]} />
@@ -1538,31 +1486,66 @@ const PART_MAPPING = {
 function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: AssistantMessage }) {
   const { theme, subtleSyntax } = useTheme()
   const ctx = use()
+  const [expanded, setExpanded] = createSignal(false)
   const content = createMemo(() => {
-    // Filter out redacted reasoning chunks from OpenRouter
-    // OpenRouter sends encrypted reasoning data that appears as [REDACTED]
     return props.part.text.replace("[REDACTED]", "").trim()
+  })
+  const header = createMemo(() => {
+    const m = content().match(/^### (.+)/)
+    return m ? m[1].trim() : ""
+  })
+  const body = createMemo(() => {
+    return content().replace(/^### .+\n*/, "").trim()
+  })
+  const preview = createMemo(() => {
+    const lines = body().split("\n")
+    return lines.slice(0, 5).join("\n") + (lines.length > 5 ? "\n…" : "")
   })
   return (
     <Show when={content() && ctx.showThinking()}>
       <box
         id={"text-" + props.part.id}
-        paddingLeft={2}
-        marginTop={1}
         flexDirection="column"
-        border={["left"]}
-        customBorderChars={SplitBorder.customBorderChars}
-        borderColor={theme.backgroundElement}
+        marginTop={1}
       >
-        <code
-          filetype="markdown"
-          drawUnstyledText={false}
-          streaming={true}
-          syntaxStyle={subtleSyntax()}
-          content={"_Thinking:_ " + content()}
-          conceal={ctx.conceal()}
-          fg={theme.textMuted}
-        />
+        <box
+          onMouseDown={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setExpanded(!expanded())
+          }}
+        >
+          <text fg={theme.accent}>
+            {expanded() ? "▾" : "▸"} {header() || "Thinking"}
+          </text>
+        </box>
+        <Show
+          when={expanded()}
+          fallback={
+            <box paddingLeft={2}>
+              <text fg={theme.textMuted}>{preview()}</text>
+            </box>
+          }
+        >
+          <box
+            paddingLeft={2}
+            marginTop={1}
+            flexDirection="column"
+            border={["left"]}
+            customBorderChars={SplitBorder.customBorderChars}
+            borderColor={theme.backgroundElement}
+          >
+            <code
+              filetype="markdown"
+              drawUnstyledText={false}
+              streaming={true}
+              syntaxStyle={subtleSyntax()}
+              content={body()}
+              conceal={ctx.conceal()}
+              fg={theme.textMuted}
+            />
+          </box>
+        </Show>
       </box>
     </Show>
   )
@@ -1592,34 +1575,67 @@ function TeamRoundPartDisplay(props: { last: boolean; part: TeamRoundPart; messa
 
 function TextPart(props: { last: boolean; part: TextPart; message: AssistantMessage }) {
   const ctx = use()
-  const { theme, syntax } = useTheme()
+  const { theme, syntax, subtleSyntax } = useTheme()
+  const [expanded, setExpanded] = createSignal(false)
+  const text = createMemo(() => props.part.text.trim())
+  const isTeamThread = createMemo(() => (props.part as any).metadata?.team_thread || text().startsWith("### Team Discussion"))
+  const header = createMemo(() => {
+    if (!isTeamThread()) return ""
+    const m = text().match(/^### (.+)/)
+    return m ? m[1].trim() : ""
+  })
+  const body = createMemo(() => {
+    if (!isTeamThread()) return text()
+    return text().replace(/^### .+\n*/, "").trim()
+  })
+  const preview = createMemo(() => {
+    if (!isTeamThread()) return ""
+    const lines = body().split("\n")
+    return lines.slice(0, 5).join("\n") + (lines.length > 5 ? "\n…" : "")
+  })
+
   return (
-    <Show when={props.part.text.trim()}>
-      <box id={"text-" + props.part.id} paddingLeft={3} marginTop={1} flexShrink={0}>
-        <Switch>
-          <Match when={Flag.OPENCODE_EXPERIMENTAL_MARKDOWN}>
-            <markdown
-              syntaxStyle={syntax()}
-              streaming={true}
-              content={props.part.text.trim()}
-              conceal={ctx.conceal()}
-              fg={theme.markdownText}
-              bg={theme.background}
-            />
-          </Match>
-          <Match when={!Flag.OPENCODE_EXPERIMENTAL_MARKDOWN}>
-            <code
-              filetype="markdown"
-              drawUnstyledText={false}
-              streaming={true}
-              syntaxStyle={syntax()}
-              content={props.part.text.trim()}
-              conceal={ctx.conceal()}
-              fg={theme.text}
-            />
-          </Match>
-        </Switch>
-      </box>
+    <Show when={text()}>
+      <Show when={isTeamThread()}
+        fallback={
+          <box id={"text-" + props.part.id} paddingLeft={3} marginTop={1} flexShrink={0}>
+            <Switch>
+              <Match when={Flag.OPENCODE_EXPERIMENTAL_MARKDOWN}>
+                <markdown streaming={true} content={text()} conceal={ctx.conceal()} fg={theme.markdownText} bg={theme.background} syntaxStyle={syntax()} />
+              </Match>
+              <Match when={!Flag.OPENCODE_EXPERIMENTAL_MARKDOWN}>
+                <code filetype="markdown" drawUnstyledText={false} streaming={true} content={text()} conceal={ctx.conceal()} fg={theme.text} syntaxStyle={syntax()} />
+              </Match>
+            </Switch>
+          </box>
+        }
+      >
+        <box id={"text-" + props.part.id} flexDirection="column" marginTop={1}>
+          <box
+            onMouseDown={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setExpanded(!expanded())
+            }}
+          >
+            <text fg={theme.accent}>
+              {expanded() ? "▾" : "▸"} {header() || "Team Discussion"}
+            </text>
+          </box>
+          <Show
+            when={expanded()}
+            fallback={
+              <box paddingLeft={2}>
+                <text fg={theme.textMuted}>{preview()}</text>
+              </box>
+            }
+          >
+            <box paddingLeft={2} marginTop={1} flexDirection="column" border={["left"]} borderColor={theme.backgroundElement} customBorderChars={SplitBorder.customBorderChars}>
+              <code filetype="markdown" drawUnstyledText={false} streaming={true} content={body()} conceal={ctx.conceal()} fg={theme.textMuted} syntaxStyle={subtleSyntax()} />
+            </box>
+          </Show>
+        </box>
+      </Show>
     </Show>
   )
 }

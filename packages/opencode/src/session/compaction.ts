@@ -439,21 +439,72 @@ export const layer: Layer.Layer<
         sessionID: input.sessionID,
         model,
       })
-      const result = yield* processor.process({
-        user: userMessage,
-        agent,
-        sessionID: input.sessionID,
-        tools: {},
-        system: [],
-        messages: [
-          ...modelMessages,
-          {
-            role: "user",
-            content: [{ type: "text", text: nextPrompt }],
-          },
-        ],
-        model,
-      })
+      // Collect fallback models from team members if available
+      const teamModels: Array<{ providerID: string; modelID: string }> = (userMessage as any).team?.length
+        ? (userMessage as any).team.map((m: any) => ({ providerID: m.providerID, modelID: m.modelID }))
+        : []
+      const fallbackModels = teamModels.filter(
+        (m: any) => m.providerID !== model.providerID || m.modelID !== model.id,
+      )
+
+      const doCompaction = (m: Provider.Model) =>
+        processor.process({
+          user: { ...userMessage, team: undefined },
+          agent,
+          sessionID: input.sessionID,
+          tools: {},
+          system: [],
+          messages: [
+            ...modelMessages,
+            { role: "user", content: [{ type: "text", text: nextPrompt }] },
+          ],
+          model: m,
+        })
+
+      // Try primary model
+      let primaryFailed = false
+      let result = yield* doCompaction(model).pipe(
+        Effect.orElseSucceed(() => {
+          log.warn("compaction.primary_failed", { model: model.id })
+          primaryFailed = true
+          return "stop" as const
+        }),
+      )
+
+      // If primary failed, try fallbacks from team
+      if (primaryFailed || processor.message.error) {
+        let triedFallback = false
+        for (const fb of fallbackModels) {
+          const fbModel = yield* provider.getModel(fb.providerID as any, fb.modelID as any).pipe(
+            Effect.orElseSucceed(() => null),
+          )
+          if (!fbModel) continue
+          triedFallback = true
+          processor.message.error = undefined
+          primaryFailed = false
+          log.info("compaction.fallback", { model: fbModel.id })
+          result = yield* doCompaction(fbModel).pipe(
+            Effect.orElseSucceed(() => {
+              log.warn("compaction.fallback_failed", { model: fbModel.id })
+              primaryFailed = true
+              return "stop" as const
+            }),
+          )
+          if (!primaryFailed && !processor.message.error) break
+        }
+        // All fallbacks exhausted
+        if (triedFallback && primaryFailed) {
+          log.warn("compaction.all_failed", { sessionID: input.sessionID })
+          if (!processor.message.error) {
+            processor.message.error = new MessageV2.ContextOverflowError({
+              message: "Compaction failed — all available models returned errors.",
+            }).toObject()
+            processor.message.finish = "error"
+            yield* session.updateMessage(processor.message)
+          }
+          return "stop"
+        }
+      }
 
       if (result === "compact") {
         processor.message.error = new MessageV2.ContextOverflowError({

@@ -1355,6 +1355,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           }
 
           if (task?.type === "compaction") {
+            // Team mode: skip global compaction. Debate handles per-model context via buildThreadForModel
+            if (lastUser.team?.length) continue
             const result = yield* compaction.process({
               messages: msgs,
               parentID: lastUser.id,
@@ -1367,6 +1369,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           }
 
           if (
+            !lastUser.team?.length &&
             lastFinished &&
             lastFinished.summary !== true &&
             (yield* Effect.gen(function* () {
@@ -1527,27 +1530,16 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
             if (result === "stop") return "break" as const
             if (result === "compact") {
-              // For teams, use the member with largest context
-              const compactModel = lastUser.team?.length
-                ? yield* Effect.gen(function* () {
-                    const models = yield* Effect.all(
-                      lastUser.team!.map((m) => provider.getModel(m.providerID, m.modelID).pipe(Effect.option)),
-                    )
-                    const best = models
-                      .filter(Option.isSome)
-                      .map((m) => m.value)
-                      .sort((a, b) => (b.limit?.context ?? 0) - (a.limit?.context ?? 0))[0]
-                    return best ? { providerID: best.providerID, modelID: best.id } : lastUser.model
-                  })
-                : lastUser.model
-
-              yield* compaction.create({
-                sessionID,
-                agent: lastUser.agent,
-                model: compactModel,
-                auto: true,
-                overflow: !handle.message.finish,
-              })
+              // Team mode: skip compaction. Debate handles per-model context.
+              if (!lastUser.team?.length) {
+                yield* compaction.create({
+                  sessionID,
+                  agent: lastUser.agent,
+                  model: lastUser.model,
+                  auto: true,
+                  overflow: !handle.message.finish,
+                })
+              }
             }
             return "continue" as const
           }).pipe(Effect.ensuring(instruction.clear(handle.message.id)))

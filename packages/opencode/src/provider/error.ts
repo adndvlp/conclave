@@ -64,8 +64,9 @@ function message(providerID: ProviderID, e: APICallError) {
     try {
       const body = JSON.parse(e.responseBody)
       // try to extract common error message fields
-      const errMsg = body.message || body.error || body.error?.message
+      const errMsg = body.message || body.error || body.error?.message || body.title
       if (errMsg && typeof errMsg === "string") {
+        if (errMsg === msg) return msg
         return `${msg}: ${errMsg}`
       }
     } catch {}
@@ -82,7 +83,8 @@ function message(providerID: ProviderID, e: APICallError) {
       return msg
     }
 
-    return `${msg}: ${e.responseBody}`
+    // Truncate response body to avoid flooding UI
+    return `${msg}: ${e.responseBody.slice(0, 200)}`
   }).trim()
 }
 

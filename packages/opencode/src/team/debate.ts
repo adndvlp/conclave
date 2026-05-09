@@ -7,6 +7,9 @@ import { buildDeliberationPrompt, buildSubTeamPrompt, buildGlobalRoundPrompt } f
 import type { SubTeam, CrossTeamMessage } from "./schema"
 import { callGemini, callClaude, callCodex, type CliType } from "./cli-adapter"
 
+const DEBATE_PARTICIPANT_TIMEOUT = 60_000 // 60 seconds
+const DEBATE_MAX_OUTPUT = 1024
+
 export type ApiParticipant = {
   kind: "api"
   model: Provider.Model
@@ -21,6 +24,13 @@ export type CliParticipant = {
 }
 
 export type Participant = ApiParticipant | CliParticipant
+
+export type ParticipantResult = {
+  participant: Participant
+  text: string
+  signal: Signal | null
+  error?: string
+}
 
 export type RoundSignal = {
   model: string
@@ -94,14 +104,26 @@ function parseSignal(text: string, round: number, global = false): Signal | null
 
 export type DebateResult = {
   implementer: Participant
+  orderedParticipants: Participant[]
   converged: boolean
   rounds: number
   extensions: number
   thread: string
 }
 
+export type SubTeamImplementer = {
+  subTeamId: string
+  subTeamName: string
+  focus: string
+  thread: string
+  implementer: Participant
+  memberIDs: string[]
+}
+
 export type BreakingTeamsResult = {
   implementer: Participant
+  subTeamImplementers: SubTeamImplementer[]
+  orderedParticipants: Participant[]
   converged: boolean
   globalRounds: number
   subTeams: SubTeam[]
@@ -127,13 +149,39 @@ function selectWinner(
   return best
 }
 
+function orderByScore(
+  participants: Participant[],
+  endorsements: Map<string, number>,
+  leads: Map<string, number>,
+): Participant[] {
+  return [...participants].sort((a, b) => {
+    const scoreA = (endorsements.get(a.model.id) ?? 0) * 2 + (leads.get(a.model.id) ?? 0)
+    const scoreB = (endorsements.get(b.model.id) ?? 0) * 2 + (leads.get(b.model.id) ?? 0)
+    return scoreB - scoreA
+  })
+}
+
 function lastNLines(text: string, n = 8): string {
   return text.trim().split("\n").slice(-n).join("\n")
 }
 
 // ─── callParticipant ─────────────────────────────────────────────────────────
 
-function callParticipant(
+export function errorDescription(err: unknown): string {
+  if (err instanceof DOMException && err.name === "AbortError") return "timeout"
+  if (err instanceof Error) {
+    const msg = err.message
+    if (/rate.limit|too many requests|429/i.test(msg)) return "rate_limited"
+    if (/overloaded|503|502|server.error/i.test(msg)) return "server_error"
+    if (/context.window|token.limit|overflow|too long/i.test(msg)) return "context_limit"
+    if (/insufficient.quota|billing|quota/i.test(msg)) return "quota_exceeded"
+    if (/unauthorized|401|403|auth/i.test(msg)) return "auth_error"
+    return msg.slice(0, 80)
+  }
+  return String(err).slice(0, 80)
+}
+
+export function callParticipant(
   p: Participant,
   messages: ModelMessage[],
   opts: {
@@ -142,54 +190,65 @@ function callParticipant(
     isGlobal?: boolean
     onChunk?: (name: string, accumulated: string) => void
   },
-): Effect.Effect<{ participant: Participant; text: string; signal: Signal | null }> {
-  return Effect.callback<{ participant: Participant; text: string; signal: Signal | null }>((resume) => {
+): Effect.Effect<ParticipantResult> {
+  return Effect.callback<ParticipantResult>((resume, effectSignal) => {
+    const timeoutSignal = AbortSignal.timeout(DEBATE_PARTICIPANT_TIMEOUT)
+    const signal = AbortSignal.any([effectSignal, timeoutSignal])
+
     ;(async () => {
       try {
         let accumulated = ""
-        const onChunk = (text: string) => opts.onChunk?.(p.model.name, text)
+        const emitChunk = (text: string) => opts.onChunk?.(p.model.name, text)
 
         if (p.kind === "cli") {
-          if (p.cli === "gemini") {
-            accumulated = await callGemini(p.bin, messages, p.model.id, onChunk)
-          } else if (p.cli === "codex") {
-            accumulated = await callCodex(p.bin, messages, p.model.id, onChunk)
-          } else {
-            accumulated = await callClaude(p.bin, messages, p.model.id, onChunk)
-          }
+          accumulated = await (p.cli === "gemini"
+            ? callGemini(p.bin, messages, p.model.id, emitChunk)
+            : p.cli === "codex"
+              ? callCodex(p.bin, messages, p.model.id, emitChunk)
+              : callClaude(p.bin, messages, p.model.id, emitChunk))
         } else {
           const result = streamText({
             model: (p as ApiParticipant).language as any,
             messages: messages as any,
             maxOutputTokens: opts.maxOutputTokens,
             temperature: 0.2,
+            abortSignal: signal,
+            // SDK-internal retries create abandoned streams on 429, causing
+            // unhandled promise rejections that corrupt the TUI. Disable them;
+            // the debate runner already handles rate_limited results gracefully.
+            maxRetries: 0,
           })
           for await (const chunk of result.textStream) {
             accumulated += chunk
-            onChunk(accumulated)
+            emitChunk(accumulated)
           }
         }
 
-        onChunk(accumulated)
-
-        resume(
-          Effect.succeed({
+        emitChunk(accumulated)
+        if (!effectSignal.aborted) {
+          resume(Effect.succeed({
             participant: p,
             text: accumulated,
             signal: parseSignal(accumulated, opts.round, opts.isGlobal ?? false),
-          }),
-        )
+          } satisfies ParticipantResult))
+        }
       } catch (err) {
-        console.error(`Error executing model ${p.model.id}:`, err)
-        resume(Effect.succeed({ participant: p, text: "", signal: null }))
+        if (!effectSignal.aborted) {
+          resume(Effect.succeed({
+            participant: p,
+            text: "",
+            signal: null,
+            error: errorDescription(err),
+          } satisfies ParticipantResult))
+        }
       }
-    })()
+    })().catch(() => {})
   })
 }
 
 // ─── Core debate ─────────────────────────────────────────────────────────────
 
-function buildThreadForModel(fullThread: string, contextLimit: number): string {
+export function buildThreadForModel(fullThread: string, contextLimit: number): string {
   // Rough estimate: 1 token ≈ 4 chars. Keep thread under 25% of context.
   const maxChars = Math.floor(contextLimit * 0.25 * 4)
   if (fullThread.length <= maxChars) return fullThread
@@ -211,15 +270,15 @@ function buildThreadForModel(fullThread: string, contextLimit: number): string {
 export const runDebate = Effect.fn("Team.runDebate")(function* (
   participants: Participant[],
   task: string,
+  initialThread = "",
   maxRounds = 3,
   minRounds = 2,
   maxExtensions = 2,
   roundExtension = 1,
   onProgress?: ProgressCallback,
-  onRoundComplete?: (round: number, text: string) => Effect.Effect<void>,
   onParticipantChunk?: (modelName: string, text: string, round: number) => void,
 ): Generator<any, DebateResult> {
-  let thread = ""
+  let thread = initialThread
   let implementer: Participant | null = null
   let converged = false
   let rounds = 0
@@ -244,7 +303,7 @@ export const runDebate = Effect.fn("Team.runDebate")(function* (
             round,
             maxRounds: dynamicMax,
           }),
-          { maxOutputTokens: 1024, round, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, round) : undefined },
+                  { maxOutputTokens: 1024, round, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, round) : undefined },
         )
       }),
       { concurrency: "unbounded" },
@@ -252,8 +311,15 @@ export const runDebate = Effect.fn("Team.runDebate")(function* (
 
     const roundSignals: RoundSignal[] = []
     let extendVotes = 0
+    let errorCount = 0
 
-    for (const { participant, text, signal } of roundResults) {
+    for (const { participant, text, signal, error } of roundResults) {
+      if (error) {
+        errorCount++
+        thread += `\n[${participant.model.name} ERROR:${error}] (skipped this round)\n`
+        roundSignals.push({ model: participant.model.name, signal: `ERROR:${error}`, text: "" })
+        continue
+      }
       if (text) thread += `\n[${participant.model.name}]: ${text}\n`
       if (signal) {
         const signalStr =
@@ -282,21 +348,16 @@ export const runDebate = Effect.fn("Team.runDebate")(function* (
     }
 
     if (onProgress) yield* onProgress(round, dynamicMax, roundSignals)
-    if (onRoundComplete) {
-      const roundSummary = roundSignals
-        .map((s) => `- **${s.model}**: ${s.signal}${s.text ? `\n  > ${s.text.slice(0, 200)}` : ""}`)
-        .join("\n")
-      yield* onRoundComplete(round, roundSummary || "No signals")
-    }
 
     if (extendVotes > participants.length / 2 && extensions < maxExtensions) {
       dynamicMax += roundExtension
       extensions++
     }
 
+    const activeCount = participants.length - errorCount
     if (round >= minRounds) {
       const maxEndorsed = endorsements.size > 0 ? Math.max(...endorsements.values()) : 0
-      if (maxEndorsed >= participants.length - 1) {
+      if (maxEndorsed >= activeCount - 1 || (activeCount === 1 && maxEndorsed >= 1)) {
         implementer = selectWinner(participants, endorsements, leads)
         converged = true
         break
@@ -306,7 +367,7 @@ export const runDebate = Effect.fn("Team.runDebate")(function* (
 
   if (!implementer) implementer = selectWinner(participants, endorsements, leads)
 
-  return { implementer, converged, rounds, extensions, thread }
+  return { implementer, orderedParticipants: orderByScore(participants, endorsements, leads), converged, rounds, extensions, thread }
 })
 
 // ─── Breaking Teams ───────────────────────────────────────────────────────────
@@ -405,12 +466,12 @@ function formSubTeams(
 export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
   participants: Participant[],
   task: string,
+  initialThread = "",
   maxRounds = 3,
   minRounds = 2,
   maxSubTeams = 3,
   globalRoundInterval = 1,
   onProgress?: BreakingProgressCallback,
-  onRoundComplete?: (round: number, text: string) => Effect.Effect<void>,
   onParticipantChunk?: (modelName: string, text: string, round: number) => void,
 ): Generator<any, BreakingTeamsResult> {
   // ── Phase 0: decision round ─────────────────────────────────────────────
@@ -427,7 +488,7 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
           maxRounds: 1,
           allowBreak: true,
         }),
-        { maxOutputTokens: 1024, round: 1, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, 0) : undefined },
+          { maxOutputTokens: 1024, round: 1, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, 0) : undefined },
       ),
     ),
     { concurrency: "unbounded" },
@@ -435,8 +496,14 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
 
   const breakProposals: BreakProposal[] = []
   let phase0Thread = ""
+  let phase0Errors = 0
 
-  for (const { participant, text, signal } of phase0Results) {
+  for (const { participant, text, signal, error } of phase0Results) {
+    if (error) {
+      phase0Errors++
+      phase0Thread += `\n[${participant.model.name} ERROR:${error}]\n`
+      continue
+    }
     if (text) phase0Thread += `\n[${participant.model.name}]: ${text}\n`
     if (signal?.type === "BREAK") {
       breakProposals.push({
@@ -451,9 +518,11 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
   // Not enough BREAK votes or only 1 unique team → fall back to normal debate
   const uniqueTeams = new Set(breakProposals.map((p) => p.teamName.toLowerCase()))
   if (breakProposals.length < participants.length / 2 || uniqueTeams.size < 2) {
-    const result = yield* runDebate(participants, task, maxRounds, minRounds, 2, 1, undefined, onRoundComplete, onParticipantChunk)
+    const result = yield* runDebate(participants, task, initialThread, maxRounds, minRounds, 2, 1, undefined, onParticipantChunk)
     return {
       implementer: result.implementer,
+      subTeamImplementers: [],
+      orderedParticipants: result.orderedParticipants,
       converged: result.converged,
       globalRounds: result.rounds,
       subTeams: [],
@@ -491,7 +560,8 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
   let globalRound = 0
   let allDone = false
   const globalBroadcasts: CrossTeamMessage[] = []
-  let globalThread = phase0Thread
+  let globalThread = initialThread ? initialThread + "\n\n" : ""
+  globalThread += phase0Thread
 
   // ── Phase 2: main loop ───────────────────────────────────────────────────
   for (let cycle = 1; cycle <= maxRounds && !allDone; cycle++) {
@@ -527,15 +597,22 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
                   round,
                   maxRounds,
                 }),
-                { maxOutputTokens: 1024, round, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, round) : undefined },
+          { maxOutputTokens: 1024, round, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, round) : undefined },
               ),
             ),
             { concurrency: "unbounded" },
           )
 
           const roundSignals: RoundSignal[] = []
+          let errCount = 0
 
-          for (const { participant, text, signal } of roundResults) {
+          for (const { participant, text, signal, error } of roundResults) {
+            if (error) {
+              errCount++
+              state.thread += `\n[${participant.model.name} ERROR:${error}] (skipped)\n`
+              roundSignals.push({ model: participant.model.name, signal: `ERROR:${error}`, text: "" })
+              continue
+            }
             if (text) state.thread += `\n[${participant.model.name}]: ${text.slice(0, 200)}${text.length > 200 ? "..." : ""}\n`
             if (signal) {
               const signalStr =
@@ -561,19 +638,13 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
           }
 
           // Check convergence for this sub-team
+          const activeMembers = members.length - errCount
           if (round >= minRounds) {
             const maxEndorsed = state.endorsements.size > 0 ? Math.max(...state.endorsements.values()) : 0
-            if (maxEndorsed >= members.length - 1 || members.length === 1) {
+            if (maxEndorsed >= activeMembers - 1 || activeMembers <= 1) {
               state.implementer = selectWinner(members, state.endorsements, state.leads)
               state.status = "done"
             }
-          }
-
-          if (onRoundComplete) {
-            const roundText = roundSignals
-              .map((s) => `**[${st.name}] ${s.model}** \`${s.signal}\`\n\n${s.text}`)
-              .join("\n\n---\n\n")
-            yield* onRoundComplete(round, `## Sub-equipo: ${st.name}\n\n${roundText}`)
           }
 
           if (onProgress) {
@@ -616,7 +687,7 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
               task,
               globalRound,
             }),
-            { maxOutputTokens: 1024, round: 2, isGlobal: true, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, globalRound) : undefined },
+              { maxOutputTokens: 1024, round: 2, isGlobal: true, onChunk: onParticipantChunk ? (name, text) => onParticipantChunk(name, text, globalRound) : undefined },
           ).pipe(Effect.map((r) => ({ ...r, teamName })))
         }),
         { concurrency: "unbounded" },
@@ -624,8 +695,15 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
 
       let allPass = true
       const globalSignals: RoundSignal[] = []
+      let globalErrorCount = 0
 
-      for (const { participant, text, signal, teamName } of globalResults) {
+      for (const { participant, text, signal, error, teamName } of globalResults) {
+        if (error) {
+          globalErrorCount++
+          globalThread += `\n[GLOBAL][${teamName}][${participant.model.name} ERROR:${error}]\n`
+          globalSignals.push({ model: participant.model.name, signal: `ERROR:${error}`, text: "" })
+          continue
+        }
         if (text) globalThread += `\n[GLOBAL][${teamName}][${participant.model.name}]: ${text}\n`
         if (signal) {
           const signalStr = (signal as any).payload
@@ -643,13 +721,6 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
             })
           }
         }
-      }
-
-      if (onRoundComplete) {
-        const globalText = globalSignals
-          .map((s) => `**[GLOBAL] ${s.model}** \`${s.signal}\`\n\n${s.text}`)
-          .join("\n\n---\n\n")
-        yield* onRoundComplete(globalRound, `## Ronda global ${globalRound}\n\n${globalText}`)
       }
 
       // All done if all sub-teams converged AND no broadcasts
@@ -691,8 +762,19 @@ export const runBreakingTeams = Effect.fn("Team.runBreakingTeams")(function* (
     crossTeamMessages: subTeamState.get(st.id)!.crossTeamMessages,
   }))
 
+  const subTeamImplementers: SubTeamImplementer[] = subTeamDefs
+    .map((st) => {
+      const state = subTeamState.get(st.id)!
+      return state.implementer
+        ? { subTeamId: st.id, subTeamName: st.name, focus: st.focus, thread: state.thread, implementer: state.implementer, memberIDs: st.memberIDs }
+        : null
+    })
+    .filter((x): x is SubTeamImplementer => x !== null)
+
   return {
     implementer: globalImplementer,
+    subTeamImplementers,
+    orderedParticipants: participants,
     converged: allDone,
     globalRounds: globalRound,
     subTeams: finalSubTeams,

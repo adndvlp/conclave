@@ -197,10 +197,20 @@ export function DialogTeamModels() {
     direction: -1 | 1,
   ) {
     const members = local.team.current() ?? []
-    const currentIdx = members.findIndex(
+    let currentIdx = members.findIndex(
       (m) => m.providerID === providerID && variants.some((v) => v.modelID === m.modelID),
     )
-    if (currentIdx < 0) return
+
+    // If member was added as base model (no reasoning suffix), start from first variant
+    if (currentIdx < 0) {
+      const memberIdx = members.findIndex((m) => m.providerID === providerID)
+      if (memberIdx < 0) return
+      // Replace base model with first variant
+      const updated = [...members]
+      updated[memberIdx] = { providerID, modelID: variants[0].modelID }
+      local.team.set(updated)
+      return
+    }
 
     const currentModelID = members[currentIdx].modelID
     const variantIdx = variants.findIndex((v) => v.modelID === currentModelID)
@@ -276,14 +286,14 @@ export function DialogTeamModels() {
       },
     },
     {
-      keybind: Keybind.parse("c")[0],
+      keybind: Keybind.parse("ctrl+d")[0],
       title: "clear all",
       onTrigger: () => {
         local.team.clear()
       },
     },
     {
-      keybind: Keybind.parse("r")[0],
+      keybind: Keybind.parse("ctrl+e")[0],
       title: "rename",
       onTrigger: () => {
         dialog.replace(() => (
