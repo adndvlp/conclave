@@ -1,6 +1,6 @@
 # Conclave -- Complete Technical Documentation
 
-> **Version**: 1.0.1 | **License**: MIT | **Language**: TypeScript (Bun 1.3.13)
+> **Version**: 1.0.3 | **License**: MIT | **Language**: TypeScript (Bun 1.3.13)
 > **Repository**: `github.com/adndvlp/conclave`
 > **Upstream**: fork of [OpenCode](https://github.com/anomalyco/opencode)
 >

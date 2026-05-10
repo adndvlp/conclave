@@ -16,7 +16,7 @@
 
 - **External services required**: The debate requires live API access to all configured providers. No offline fallback.
 - **Provider rate limits**: Each provider has its own rate limits. A team with models from 3 different providers must respect all 3 rate limits.
-- **Provider outages**: If one model's provider is down, the debate stalls or fails (currently no graceful degradation).
+- **Provider outages**: If one model's provider is down, the debate **degrades gracefully** (v1.0.3): errored participants are skipped for that round, the `activeCount` is recalculated, and the debate can still converge. During implementation, fallback participants take over if the primary fails.
 - **Model deprecation**: Providers deprecate models. A configured team may stop working when a model is removed.
 
 ## Signal protocol fragility
@@ -29,7 +29,7 @@
 ## Breaking Teams limitations
 
 - **Minimal cross-team communication**: BROADCAST is one-way. There is no request-response between teams (no "Frontend asks Backend for the API URL").
-- **No merge conflict resolution**: If two sub-teams edit the same file, there is no automatic conflict resolution.
+- **Merge conflict resolution**: v1.0.3 adds `findFileConflicts()` detection and automatic resolution by API participants when sub-teams modify the same files. However, this is best-effort -- complex semantic conflicts may not be fully merged.
 - **Hard sub-team cap**: Maximum sub-teams is floor(participants.length / 2). A 4-model team can form at most 2 sub-teams.
 - **Solo team limitation**: Solo teams are merged into the smallest viable team, potentially forcing a model into a role it did not choose.
 
@@ -43,7 +43,7 @@
 
 - **Installation dependency**: CLI tools must be pre-installed on the user's machine.
 - **Version compatibility**: CLI output formats may change between versions, breaking the JSON parsing adapters.
-- **No streaming during debate**: CLI participants return full responses, not streaming. The debate UI cannot show live reasoning from CLI models.
+- **No streaming during debate**: CLI participants return full responses, not streaming. The debate UI shows live reasoning from API participants via reasoning parts (v1.0.3), but CLI models still return batch output.
 - **Authentication friction**: Each CLI has its own auth flow. Users must separately authenticate each CLI.
 
 ## Security considerations

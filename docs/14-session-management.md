@@ -119,7 +119,7 @@ part
 
 ## Streaming
 
-`SessionProcessor.process()` in `processor.ts` (735 lines) handles real-time LLM streaming:
+`SessionProcessor.process()` in `processor.ts` (~1050 lines) handles real-time LLM streaming:
 
 1. **text-start / text-delta / text-end**: Text content streaming
 2. **tool-call**: LLM requests tool execution (state: pending)
@@ -127,6 +127,21 @@ part
 4. **reasoning-start/delta/end**: Thinking/reasoning blocks
 5. **start-step / finish-step**: Snapshot boundaries
 6. **error**: Error events with retry logic
+
+### Team streaming (v1.0.3)
+
+In team mode, debate participant text streams via **reasoning parts** (same mechanism as single-model reasoning). Each team member gets a dedicated reasoning part with real-time delta streaming. A round header text part shows current round progress. After the debate, the team discussion thread is persisted as a text part with `metadata: { team_thread: true }`, enabling subsequent turns to access prior debate context.
+
+### Concurrent team implementation (v1.0.3)
+
+When sub-teams exist, the processor runs all sub-team implementers **in parallel** via `Effect.all({ concurrency: "unbounded" })`:
+
+- **Pre-created text parts**: Each sub-team gets a text part before execution starts, enabling real-time TUI output
+- **Streaming deltas**: `updatePartDelta()` streams live output per sub-team
+- **Fallback**: If an implementer fails, another `orderedParticipant` takes over with full failed-output context
+- **Conflict detection**: `findFileConflicts()` detects files modified by multiple sub-teams; API participants resolve conflicts
+- **Check-and-fix**: `checkAndFixLoop()` validates output and retries with error context
+- **SDK control via bridge**: `EffectBridge` bridges Effect fibers with Promise-based callbacks
 
 ## Doom loop detection
 
@@ -149,6 +164,10 @@ const DOOM_LOOP_THRESHOLD = 3
 - **Auto compaction**: Triggered when message history exceeds model context
 - **Pruning**: Removes or summarizes oldest messages
 - **Summary injection**: Adds a compacted summary of what was removed
+
+### Team mode behavior (v1.0.3)
+
+Compaction is **disabled in team mode**. The debate engine handles per-model context via `buildThreadForModel()`, which truncates the debate thread to 25% of each model's context window. Team thread parts (`metadata: { team_thread: true }`) are preserved across compaction, ensuring previous debate context survives message pruning. Summary generation is also disabled for team-mode turns to avoid losing deliberation details.
 
 ## Key service files
 

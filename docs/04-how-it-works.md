@@ -50,13 +50,29 @@ The CLI (`packages/opencode/src/index.ts`) parses this via yargs and dispatches 
 - A sub-team converges when one member has near-unanimous endorsements (everyone else SUPPORTs or ALIGNs them)
 - The loop ends when all sub-teams are done and no broadcasts remain
 
-**Phase 3 -- Global Implementer Selection**
-- The sub-team with the highest combined endorsement + lead score provides the implementer
-- The implementer is the member within that sub-team with the most endorsements and leads
+**Phase 3 -- Per-Sub-Team Implementer Selection + Concurrent Execution** (v1.0.3)
+- The per-sub-team implementer is the member within that sub-team with the best endorsement score
+- All sub-team implementers run **in parallel** via `Effect.all({ concurrency: "unbounded" })`
+- Each implementer gets its sub-team's debate context + the original task
+- **Fallback**: If an implementer fails, another participant from `orderedParticipants` takes over with full failed-output context
+- **Conflict detection**: `findFileConflicts()` identifies files modified by multiple sub-teams; API participants merge
+- **Check-and-fix**: Automated verification loop retries if errors are found
 
 ### Step 5: Implementation
 
-`SessionProcessor.process()` in `src/session/processor.ts`:
+`SessionProcessor.process()` in `src/session/processor.ts` (~1050 lines in v1.0.3):
+
+#### Concurrent sub-team execution (v1.0.3)
+When `subTeamImplementers` are present, all implementers execute in parallel:
+- Text parts are pre-created per sub-team for real-time TUI streaming
+- Each implementer streams deltas via `updatePartDelta()`
+- Fallback participants take over on failure
+- File conflicts are detected and resolved
+
+#### Task breakdown mode (v1.0.3)
+When no sub-teams form but 2+ API participants exist, tasks are broken down via `generateTaskBreakdown()` and assigned round-robin. Same fallback and conflict resolution apply.
+
+#### Legacy paths (still supported)
 
 - If the implementer is a **CLI participant** (Gemini CLI, Claude Code, Codex):
   - Spawns the CLI in agent mode (full tool access, no debate restrictions)
@@ -111,34 +127,37 @@ User: "Build auth system"
   votes                 v
     |           runDebate() (flat debate)
     v                   |
-  Phase 1           Round 1
-  Form Teams        Round 2
-    |              (converge?)
-    v                   |
+  Phase 1           Round 1..N
+  Form Teams        (converge?)
+    |                   |
+    v                   v
   Phase 2           Select winner
   Parallel              |
-  Sub-team              v
-  Rounds
+  Sub-team              |
+  Rounds                |
+    |                   |
+    v                   |
+  Phase 3 (v1.0.3)      |
+  Per-sub-team          |
+  implementers          |
+    |                   |
+    +---------+---------+
+              |
+              v
+  SessionProcessor.process()
+              |
+    +---------+---------+---------+
+    |                   |         |
+  Concurrent        CLI impl.   API impl.
+  sub-teams         (legacy)    (legacy)
+  (v1.0.3)             |         |
+    |                   +----+----+
+    v                        |
+  Parallel tasks             v
+  + fallback +         LLM reasons ->
+  conflict detect +     calls tools ->
+  check-and-fix         repeats
     |
     v
-  Phase 3
-  Select global
-  implementer
-              |
-              v
-    SessionProcessor.process()
-              |
-    +---------+---------+
-    |                   |
-  CLI implementer    API implementer
-  (Gemini/Claude/   (streamText via
-   Codex subprocess)  Vercel AI SDK)
-    |                   |
-    +---------+---------+
-              |
-              v
-    LLM reasons -> calls tools -> observes -> repeats
-              |
-              v
-    Final output: code, edits, results
+  Final output: code, edits, results
 ```

@@ -16,6 +16,14 @@ Conclave is an AI coding agent that puts **multiple LLMs in a room to debate** y
 
 ---
 
+## Demo
+
+<a href="https://www.youtube.com/watch?v=M9QDS8QP3cA">
+  <img src="https://img.youtube.com/vi/M9QDS8QP3cA/maxresdefault.jpg" alt="Conclave Demo" width="800" />
+</a>
+
+---
+
 ## Documentation
 
 Full technical documentation is in the [docs/](docs/index.md) directory -- designed for both humans and LLMs to understand every aspect of the project.

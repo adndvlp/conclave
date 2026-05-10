@@ -4,6 +4,12 @@ This document combines future work ideas from the codebase specs, README, and na
 
 ## Debate improvements
 
+### Error resilience (v1.0.3 additions)
+- ~~Graceful degradation on provider failure~~ → **✅ v1.0.3**: Errored participants are skipped per-round; `activeCount` recalculates convergence threshold
+- ~~Participant timeout~~ → **✅ v1.0.3**: 60s timeout per participant via `AbortSignal.timeout()` + `AbortSignal.any()`
+- **Continuous health scoring**: Assign reliability scores based on historical error rates
+- **Pre-debate health check**: Ping all providers before starting a debate round
+
 ### Signal protocol enhancements
 - **Confidence scoring**: Models could include confidence levels with signals (SUPPORT:X:0.85:reason)
 - **Weighted voting**: Older/more experienced models could have weighted endorsements
@@ -13,7 +19,7 @@ This document combines future work ideas from the codebase specs, README, and na
 ### Convergence optimization
 - **Early exit**: Skip a model in the next round if it already converged (SUPPORT or ALIGN to the winner)
 - **Adaptive rounds**: Auto-adjust maxRounds based on convergence speed in previous rounds
-- **Dynamic participant set**: Remove consistently PASS-ing participants to reduce cost
+- ~~Dynamic participant set~~ → **Partially (v1.0.3)**: Errored participants are excluded from `activeCount` but not permanently removed
 
 ### Better deliberation
 - **Longer responses**: Increase maxOutputTokens for complex tasks, with progressive disclosure
@@ -33,9 +39,9 @@ This document combines future work ideas from the codebase specs, README, and na
 - **Historical learning**: Remember which team compositions worked well for similar tasks
 
 ### Editing coordination
-- **File-level locking**: Prevent two sub-teams from editing the same file simultaneously
-- **Automatic merge**: Merge non-conflicting changes from parallel sub-teams
-- **Conflict resolution**: When conflicts exist, escalate to a coordinator round
+- ~~File-level locking~~ → **✅ v1.0.3**: Sub-teams run concurrently; `findFileConflicts()` detects overlapping edits and API participants resolve them
+- ~~Automatic merge~~ → **✅ v1.0.3**: Conflict resolution merges non-conflicting changes from parallel sub-teams
+- ~~Conflict resolution~~ → **✅ v1.0.3**: Conflicts are detected and escalated to API participant resolvers with full context
 
 ## CLI bridging
 
@@ -64,8 +70,8 @@ This document combines future work ideas from the codebase specs, README, and na
 ## Provider & model
 
 ### Provider health monitoring
-- Track provider latency and error rates
-- Automatic failover to alternative providers
+- ~~Track provider latency and error rates~~ → **✅ v1.0.3**: `errorDescription()` classifies errors (rate_limited, server_error, timeout, etc.)
+- ~~Automatic failover to alternative providers~~ → **✅ v1.0.3**: Fallback participants take over when primary implementer fails; `orderedParticipants` provides ranked fallback list
 - Cost estimation before debate starts
 
 ### Local model support
@@ -93,9 +99,9 @@ This document combines future work ideas from the codebase specs, README, and na
 ## UX improvements
 
 ### Better progress visualization
-- Real-time debate round visualization in TUI and web
+- ~~Real-time debate round visualization in TUI and web~~ → **✅ v1.0.3**: Reasoning parts stream per-participant debate text in real-time
 - Sub-team progress as a tree/dag
-- Per-model reasoning snippets during debate
+- ~~Per-model reasoning snippets during debate~~ → **✅ v1.0.3**: Each participant has a dedicated reasoning part with live delta streaming
 
 ### Configuration UX
 - Guided team setup wizard

@@ -114,9 +114,10 @@ SessionPrompt.defaultLayer
     <- SessionStatus.defaultLayer
     <- Bus.defaultLayer
     <- Config.defaultLayer
-    <- Team.defaultLayer
-      <- Provider.defaultLayer
-      <- SessionStatus.defaultLayer
+     <- Team.defaultLayer
+       <- Provider.defaultLayer
+       <- SessionStatus.defaultLayer
+       <- Session.defaultLayer
   <- LLM.defaultLayer
     <- Auth.defaultLayer
     <- Config.defaultLayer

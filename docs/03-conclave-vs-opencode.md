@@ -22,8 +22,8 @@ All team-related code lives in `packages/opencode/src/team/`:
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `debate.ts` | 701 | Core debate engine -- `runDebate()` and `runBreakingTeams()` |
-| `team.ts` | 207 | Team service -- orchestrates debate, resolves participants, manages streaming progress |
+| `debate.ts` | ~780 | Core debate engine -- `runDebate()`, `runBreakingTeams()`, error handling, timeouts, scoring |
+| `team.ts` | ~247 | Team service -- orchestrates debate, resolves participants, reasoning-part streaming, thread persistence |
 | `prompts.ts` | 203 | Prompt builders for deliberation rounds, sub-teams, and global coordination |
 | `cli-adapter.ts` | 359 | Adapters for Gemini CLI, Claude Code, and Codex CLI |
 | `schema.ts` | 43 | Team data types -- `TeamConfig`, `TeamMember`, `SubTeam`, `CrossTeamMessage` |
@@ -37,14 +37,17 @@ All team-related code lives in `packages/opencode/src/team/`:
 - `SessionPrompt.prompt()` checks if team config has 2+ members and calls `Team.Service.run()` before normal processing
 - If team returns a result, the debate thread replaces the user's original prompt
 - If team selects a CLI implementer (Gemini/Claude/Codex), the processor routes to agent-mode CLI
+- **v1.0.3**: Compaction and summary generation are disabled in team mode; debate handles per-model context via `buildThreadForModel()`
 
 ### `packages/opencode/src/session/processor.ts`
 - Imports `Team`, `CLI_PROVIDER_IDS`, `callGeminiAgent`, `callClaudeAgent`, `callCodex`
 - In `process()`, checks if the implementer is a `CliParticipant` and routes to agent-mode CLI subprocess
 - Maps CLI-specific events (from subprocess JSON streams) to the standard message/part format
+- **v1.0.3**: Concurrent sub-team implementation with `Effect.all({ concurrency: "unbounded" })`; fallback participants on failure; file conflict detection and resolution; automated check-and-fix loop
 
 ### `packages/opencode/src/session/status.ts`
-- Extended `SessionStatus` type to include `team.breaking` state with `globalRound`, `subTeams`, `participantStreams`
+- Extended `SessionStatus` type to include `team.breaking` state with `globalRound` and `subTeams` info
+- **v1.0.3**: `participantStreams` removed; debate streaming now uses reasoning parts (see [07-breaking-teams.md](07-breaking-teams.md))
 
 ## Config isolation
 
